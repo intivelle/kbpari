@@ -52,7 +52,7 @@ async function loadTransactions(){
     seen.add(p.mt5_ticket);
     rows.push(p);
   }
-  $("transactionsBody").innerHTML=rows.map(p=>`<tr><td>${p.symbol}</td><td>${p.side}</td><td>${num(p.volume)}</td><td>${num(p.entry_price)}</td><td>${num(p.close_price)}</td><td>${p.pips==null?"—":num(p.pips)}</td><td>${money(p.profit)}</td><td>${p.close_reason||"—"}</td><td>${date(p.closed_at)}</td><td>${p.mt5_ticket}</td></tr>`).join("") || '<tr><td colspan="10">Belum ada transaksi hari ini.</td></tr>';
+  $("transactionsBody").innerHTML=rows.map(p=>`<tr><td>${p.symbol}</td><td>${p.side}</td><td>${num(p.volume)}</td><td>${num(p.entry_price)}</td><td>${p.stop_loss==null?"—":num(p.stop_loss)}</td><td>${num(p.close_price)}</td><td>${p.pips==null?"—":num(p.pips)}<td>${money(p.profit)}</td><td>${p.close_reason||"—"}</td><td>${date(p.closed_at)}</td><td>${p.mt5_ticket}</td></tr>`).join("") || '<tr><td colspan="11">Belum ada transaksi hari ini.</td></tr>';
 }
 
 async function loadSystem(){
