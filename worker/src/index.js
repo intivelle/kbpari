@@ -142,6 +142,11 @@ async function handleHeartbeat(request, env) {
 }
 
 async function handleSignalsGet(request, env) {
+  const config = await getConfig(env);
+  if (!config || !config.enabled || config.mode !== "AUTO") {
+    return response({ success: true, signals: [] });
+  }
+
   const url = new URL(request.url);
   const params = new URLSearchParams();
   params.set("select", "*");
@@ -161,6 +166,15 @@ async function handleSignalsPost(request, env) {
   const body = await readJson(request);
   if (!body.symbol || !body.signal) {
     throw new Error("symbol and signal are required");
+  }
+
+  const config = await getConfig(env);
+  if (!config) throw new Error("Bot configuration not found");
+  if (!config.symbols?.includes(body.symbol)) {
+    throw new Error("Symbol is not enabled");
+  }
+  if (!["BUY","SELL","CLOSE","NONE"].includes(body.signal)) {
+    throw new Error("Invalid signal");
   }
 
   const row = {
