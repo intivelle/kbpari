@@ -70,44 +70,40 @@ export async function generateSignal(env, symbol) {
   }
 
   // Trend-following entry model:
-  // Establish trend direction from EMA9/EMA21 alignment and slope, then
-  // enter on a fresh pullback/reclaim instead of requiring a new crossover.
-  // BUY: EMA9 > EMA21, both rising, previous close <= EMA9, current close > EMA9.
-  // SELL: EMA9 < EMA21, both falling, previous close >= EMA9, current close < EMA9.
-  // ATR provides a minimum trend-strength filter for flat markets.
+  // Entry is driven by the current trend, not by a crossover or a
+  // pullback/reclaim event. BUY when EMA9 is above EMA21 and both
+  // averages are rising; SELL when EMA9 is below EMA21 and both
+  // averages are falling. ATR only filters genuinely flat conditions.
   const emaGapNow = ema9Now - ema21Now;
   const emaGapPrev = ema9Prev - ema21Prev;
   const ema9Slope = ema9Now - ema9Prev;
   const ema21Slope = ema21Now - ema21Prev;
   const closeNow = Number(last.close);
   const closePrev = Number(previous.close);
-  const atrThreshold = atr14 * 0.02;
+  const atrThreshold = atr14 * 0.005;
   const trendStrength = Math.abs(emaGapNow) / atr14;
 
   const bullishTrend =
     emaGapNow > 0 &&
     ema9Slope > atrThreshold &&
-    ema21Slope > 0 &&
-    trendStrength >= 0.03;
+    ema21Slope >= 0 &&
+    trendStrength >= 0.01;
 
   const bearishTrend =
     emaGapNow < 0 &&
     ema9Slope < -atrThreshold &&
-    ema21Slope < 0 &&
-    trendStrength >= 0.03;
-
-  const bullishReclaim = closePrev <= ema9Prev && closeNow > ema9Now && closeNow > closePrev;
-  const bearishReclaim = closePrev >= ema9Prev && closeNow < ema9Now && closeNow < closePrev;
+    ema21Slope <= 0 &&
+    trendStrength >= 0.01;
 
   let action = null;
   let reason = null;
 
-  if (bullishTrend && bullishReclaim) {
+  if (bullishTrend) {
     action = "BUY";
-    reason = "TREND_BUY_PULLBACK_RECLAIM|" + last.candle_time;
-  } else if (bearishTrend && bearishReclaim) {
+    reason = "TREND_BUY|" + last.candle_time;
+  } else if (bearishTrend) {
     action = "SELL";
-    reason = "TREND_SELL_PULLBACK_RECLAIM|" + last.candle_time;
+    reason = "TREND_SELL|" + last.candle_time;
   } else {
     const trendState = bullishTrend ? "BULLISH" : bearishTrend ? "BEARISH" : "NEUTRAL";
     return {
