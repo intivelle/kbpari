@@ -307,6 +307,7 @@ async function handleTransactionsPost(request, env) {
     side: body.side,
     volume: body.volume ?? 0,
     entry_price: body.entry_price ?? 0,
+    stop_loss: body.stop_loss ?? null,
     close_price: body.close_price ?? 0,
     pips: body.pips ?? null,
     profit: body.profit ?? 0,
