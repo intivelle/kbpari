@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.024"
+#property version   "1.025"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -283,7 +283,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.024",
+      "1.025",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -500,6 +500,38 @@ double CalculateVolume(string symbol, double stop_loss)
    return NormalizeVolume(symbol, risk_money / loss_per_lot);
 }
 
+
+
+double PrepareValidStopLoss(string symbol, string action, double requested_sl, double bid, double ask, bool &adjusted)
+{
+   adjusted = false;
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   double tick_size = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
+   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   long stops_level = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   long freeze_level = SymbolInfoInteger(symbol, SYMBOL_TRADE_FREEZE_LEVEL);
+   if(point <= 0.0) return requested_sl;
+   if(tick_size <= 0.0) tick_size = point;
+   double min_distance = (double)MathMax(stops_level, freeze_level) * point + tick_size;
+   double sl = requested_sl;
+   if(action == "BUY")
+   {
+      double max_sl = bid - min_distance;
+      if(sl <= 0.0 || sl > max_sl) { sl = max_sl; adjusted = true; }
+   }
+   else if(action == "SELL")
+   {
+      double min_sl = ask + min_distance;
+      if(sl <= 0.0 || sl < min_sl) { sl = min_sl; adjusted = true; }
+   }
+   sl = MathRound(sl / tick_size) * tick_size;
+   sl = NormalizeDouble(sl, digits);
+   if(adjusted)
+      PrintFormat("[%s] SL adjusted: requested=%.5f final=%.5f stops_level=%d freeze_level=%d point=%.5f tick_size=%.5f",
+                  symbol, requested_sl, sl, (int)stops_level, (int)freeze_level, point, tick_size);
+   return sl;
+}
+
 string ExtractFirstSignal(string json)
 {
    int a = StringFind(json, "\"signals\":[");
@@ -585,12 +617,14 @@ bool PollAndExecuteSignal()
    if(!SymbolSelect(symbol, true))
       return false;
 
-   double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
-   double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
-   if(ask <= 0.0 || bid <= 0.0)
+   MqlTick tick;
+   if(!SymbolInfoTick(symbol, tick) || tick.ask <= 0.0 || tick.bid <= 0.0)
       return false;
 
-   double volume = CalculateVolume(symbol, stop_loss);
+   bool sl_adjusted = false;
+   double valid_stop_loss = PrepareValidStopLoss(symbol, action, stop_loss, tick.bid, tick.ask, sl_adjusted);
+
+   double volume = CalculateVolume(symbol, valid_stop_loss);
    if(volume <= 0.0)
       return false;
 
@@ -599,9 +633,9 @@ bool PollAndExecuteSignal()
    trade.SetTypeFillingBySymbol(symbol);
 
    if(action == "BUY")
-      ok = trade.Buy(volume, symbol, 0.0, stop_loss, 0.0, "KBPARI:" + id);
+      ok = trade.Buy(volume, symbol, 0.0, valid_stop_loss, 0.0, "KBPARI:" + id);
    else
-      ok = trade.Sell(volume, symbol, 0.0, stop_loss, 0.0, "KBPARI:" + id);
+      ok = trade.Sell(volume, symbol, 0.0, valid_stop_loss, 0.0, "KBPARI:" + id);
 
    if(!ok)
    {
@@ -625,7 +659,7 @@ bool PollAndExecuteSignal()
 
    string order_body = StringFormat(
       "{\"client_order_id\":\"%s\",\"mt5_ticket\":%I64u,\"symbol\":\"%s\",\"side\":\"%s\",\"volume\":%.2f,\"requested_price\":%.8f,\"stop_loss\":%.8f,\"take_profit\":null,\"status\":\"FILLED\",\"signal_id\":\"%s\"}",
-      "KBPARI-" + id, order_ticket, JsonEscape(symbol), action, volume, fill_price, stop_loss, JsonEscape(id));
+      "KBPARI-" + id, order_ticket, JsonEscape(symbol), action, volume, fill_price, valid_stop_loss, JsonEscape(id));
 
    string order_response;
    int order_status;
@@ -644,7 +678,7 @@ bool PollAndExecuteSignal()
    int exec_status;
    HttpRequest("POST", "/execution", exec_body, exec_response, exec_status);
 
-   PrintFormat("[%s] %s executed order=%I64u position=%I64u volume=%.2f", symbol, action, order_ticket, position_ticket, volume);
+   PrintFormat("[%s] %s executed order=%I64u position=%I64u volume=%.2f SL=%.5f%s", symbol, action, order_ticket, position_ticket, volume, valid_stop_loss, sl_adjusted ? " (adjusted for broker limits)" : "");
    return true;
 }
 
