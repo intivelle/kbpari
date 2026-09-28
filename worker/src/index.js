@@ -110,6 +110,35 @@ async function handleHealth(env) {
   });
 }
 
+async function handleProfilesGet(request, env) {
+  const url = new URL(request.url);
+  const symbol = url.searchParams.get("symbol");
+  const path = symbol
+    ? "symbol_profiles?select=*&symbol=eq." + encodeURIComponent(symbol) + "&limit=1"
+    : "symbol_profiles?select=*&order=symbol.asc";
+  const data = await supabaseRequest(env, path);
+  return response({ success: true, profiles: data || [] });
+}
+
+async function handleProfilesPost(request, env) {
+  const body = await readJson(request);
+  if (!body.symbol || !body.profile_name || !body.settings) {
+    throw new Error("symbol, profile_name and settings are required");
+  }
+  const row = {
+    symbol: body.symbol,
+    profile_name: body.profile_name,
+    settings: body.settings,
+    updated_at: new Date().toISOString(),
+  };
+  const data = await supabaseRequest(env, "symbol_profiles?on_conflict=symbol", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify(row),
+  });
+  return response({ success: true, profile: data?.[0] ?? data });
+}
+
 async function handleConfig(env) {
   const config = await getConfig(env);
   if (!config) {
@@ -519,6 +548,12 @@ async function route(request, env) {
 
   if (request.method === "GET" && url.pathname === "/config") {
     return handleConfig(env);
+  }
+  if (request.method === "GET" && url.pathname === "/profiles") {
+    return handleProfilesGet(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/profiles") {
+    return handleProfilesPost(request, env);
   }
   if (request.method === "POST" && url.pathname === "/heartbeat") {
     return handleHeartbeat(request, env);
