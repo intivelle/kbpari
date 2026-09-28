@@ -429,7 +429,8 @@ bool PollAndExecuteSignal()
       return false;
 
    bool ok = false;
-   trade.SetExpertMagicNumber(260928);\n   trade.SetTypeFillingBySymbol(symbol);
+   trade.SetExpertMagicNumber(260928);
+   trade.SetTypeFillingBySymbol(symbol);
 
    if(action == "BUY")
       ok = trade.Buy(volume, symbol, 0.0, stop_loss, 0.0, "KBPARI:" + id);
@@ -447,7 +448,14 @@ bool PollAndExecuteSignal()
       return false;
    }
 
-   ulong order_ticket = trade.ResultOrder();\n   ulong deal_ticket = trade.ResultDeal();\n   ulong position_ticket = 0;\n   if(deal_ticket > 0)\n      position_ticket = (ulong)HistoryDealGetInteger(deal_ticket, DEAL_POSITION_ID);\n   if(position_ticket == 0 && PositionSelect(symbol))\n      position_ticket = (ulong)PositionGetInteger(POSITION_TICKET);\n   double fill_price = trade.ResultPrice();
+   ulong order_ticket = trade.ResultOrder();
+   ulong deal_ticket = trade.ResultDeal();
+   ulong position_ticket = 0;
+   if(deal_ticket > 0)
+      position_ticket = (ulong)HistoryDealGetInteger(deal_ticket, DEAL_POSITION_ID);
+   if(position_ticket == 0 && PositionSelect(symbol))
+      position_ticket = (ulong)PositionGetInteger(POSITION_TICKET);
+   double fill_price = trade.ResultPrice();
 
    string order_body = StringFormat(
       "{\"client_order_id\":\"%s\",\"mt5_ticket\":%I64u,\"symbol\":\"%s\",\"side\":\"%s\",\"volume\":%.2f,\"requested_price\":%.8f,\"stop_loss\":%.8f,\"take_profit\":null,\"status\":\"FILLED\",\"signal_id\":\"%s\"}",
