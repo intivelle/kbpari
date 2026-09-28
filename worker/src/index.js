@@ -1,5 +1,5 @@
 import { ingestCandlesAndGenerate } from "./signal-engine.js";
-const INVERSE_EXECUTION = true;
+const INVERSE_EXECUTION = false;
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
