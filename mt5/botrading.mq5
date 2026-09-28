@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.028"
+#property version   "1.029"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -423,11 +423,11 @@ bool SendPositionSnapshot(ulong ticket)
    return HttpRequest("POST", "/positions", body, response_text, status) && status >= 200 && status < 300;
 }
 
-bool SendTransaction(ulong ticket, string symbol, string side, double volume, double entry_price, double close_price, double pips, double profit, string reason, datetime opened_at, datetime closed_at)
+bool SendTransaction(ulong ticket, string symbol, string side, double volume, double entry_price, double stop_loss, double close_price, double pips, double profit, string reason, datetime opened_at, datetime closed_at)
 {
    string body = StringFormat(
-      "{\"mt5_ticket\":%I64u,\"symbol\":\"%s\",\"side\":\"%s\",\"volume\":%.2f,\"entry_price\":%.8f,\"close_price\":%.8f,\"pips\":%.2f,\"profit\":%.2f,\"close_reason\":\"%s\",\"opened_at\":\"%s\",\"closed_at\":\"%s\"}",
-      ticket, JsonEscape(symbol), side, volume, entry_price, close_price, pips, profit,
+      "{\"mt5_ticket\":%I64u,\"symbol\":\"%s\",\"side\":\"%s\",\"volume\":%.2f,\"entry_price\":%.8f,\"stop_loss\":%.8f,\"close_price\":%.8f,\"pips\":%.2f,\"profit\":%.2f,\"close_reason\":\"%s\",\"opened_at\":\"%s\",\"closed_at\":\"%s\"}",
+      ticket, JsonEscape(symbol), side, volume, entry_price, stop_loss, close_price, pips, profit,
       JsonEscape(reason),
       TimeToString(opened_at, TIME_DATE|TIME_SECONDS),
       TimeToString(closed_at, TIME_DATE|TIME_SECONDS));
@@ -460,6 +460,7 @@ bool ClosePositionByTicket(ulong ticket, string reason)
    string side = (type == POSITION_TYPE_BUY ? "BUY" : "SELL");
    double volume = PositionGetDouble(POSITION_VOLUME);
    double entry_price = PositionGetDouble(POSITION_PRICE_OPEN);
+   double stop_loss = PositionGetDouble(POSITION_SL);
    double close_price = PositionGetDouble(POSITION_PRICE_CURRENT);
    double profit = PositionGetDouble(POSITION_PROFIT);
    datetime opened_at = (datetime)PositionGetInteger(POSITION_TIME);
@@ -481,7 +482,7 @@ bool ClosePositionByTicket(ulong ticket, string reason)
    string response_text;
    int status;
    HttpRequest("POST", "/execution", body, response_text, status);
-   SendTransaction(ticket, symbol, side, volume, entry_price, close_price, pips, profit, reason, opened_at, closed_at);
+   SendTransaction(ticket, symbol, side, volume, entry_price, stop_loss, close_price, pips, profit, reason, opened_at, closed_at);
    MarkPositionClosed(ticket, symbol, side, volume, entry_price, close_price, pips, profit, reason, opened_at, closed_at);
 
    PrintFormat("[%s] Position closed ticket=%I64u pips=%.2f reason=%s", symbol, ticket, pips, reason);
