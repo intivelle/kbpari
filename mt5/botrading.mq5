@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.034"
+#property version   "1.035"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -309,7 +309,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.034",
+      "1.035",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -335,6 +335,12 @@ bool SendMarketData()
 
    if(!SymbolSelect(symbol, true))
       return false;
+
+   // Force MT5 to refresh the live M1 series before reading shift 1.
+   MqlRates refresh_rates[];
+   ArraySetAsSeries(refresh_rates, true);
+   ResetLastError();
+   CopyRates(symbol, PERIOD_M1, 0, 2, refresh_rates);
 
    datetime closed_bar_time = iTime(symbol, PERIOD_M1, 1);
    if(closed_bar_time <= 0 || closed_bar_time == last_sent)
@@ -388,6 +394,10 @@ bool SendMarketData()
       status >= 200 && status < 300)
    {
       last_sent = closed_bar_time;
+      PrintFormat("[%s] Market data submitted closed_bar=%s terminal=%s",
+                  symbol,
+                  TimeToString(closed_bar_time, TIME_DATE|TIME_SECONDS),
+                  TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS));
 
       string signal_result = JsonString(response_text, "reason", "processed");
       bool generated = (StringFind(response_text, "\"generated\":true") >= 0);
@@ -1002,7 +1012,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.034 initialized.");
+   Print("[KBPARI] MT5 EA 1.035 initialized.");
    PrintFormat("[KBPARI] Signal engine market-data feed enabled for chart symbol %s only.", _Symbol);
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
