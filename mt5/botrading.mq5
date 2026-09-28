@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.015"
+#property version   "1.016"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -88,12 +88,12 @@ string JsonString(string json, string key, string fallback="")
    if(p < 0) return fallback;
    p += StringLen(needle);
    while(p < StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\t')) p++;
-   if(p >= StringLen(json) || StringGetCharacter(json,p) != CharToString(34)) return fallback;
+   if(p >= StringLen(json) || StringGetCharacter(json,p) != 34) return fallback;
    p++;
    int e = p;
    while(e < StringLen(json))
    {
-      if(StringGetCharacter(json,e)==CharToString(34) && (e==p || StringGetCharacter(json,e-1)!=CharToString(92))) break;
+      if(StringGetCharacter(json,e)==34 && (e==p || StringGetCharacter(json,e-1)!=92)) break;
       e++;
    }
    if(e >= StringLen(json)) return fallback;
@@ -279,7 +279,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.015",
+      "1.016",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -749,7 +749,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.015 initialized.");
+   Print("[KBPARI] MT5 EA 1.016 initialized.");
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
 }
