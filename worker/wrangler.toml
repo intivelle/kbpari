@@ -3,7 +3,7 @@ main = "src/index.js"
 compatibility_date = "2026-09-28"
 
 [vars]
-WORKER_API_VERSION = "1.1.0"
+WORKER_API_VERSION = "1.1.1"
 
 [secrets]
 required = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "BOT_API_KEY"]
