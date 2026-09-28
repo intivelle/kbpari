@@ -309,7 +309,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.028",
+      "1.031",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -896,6 +896,7 @@ void CheckForManualCloses()
             double profit = 0.0;
             double volume = 0.0;
             double entry_price = 0.0;
+            double stop_loss = 0.0;
             double close_price = 0.0;
             double pips = 0.0;
             datetime opened_at = 0;
@@ -918,6 +919,7 @@ void CheckForManualCloses()
                if(entry == DEAL_ENTRY_IN || entry == DEAL_ENTRY_INOUT)
                {
                   entry_price = HistoryDealGetDouble(deal, DEAL_PRICE);
+                  stop_loss = HistoryDealGetDouble(deal, DEAL_SL);
                   volume += HistoryDealGetDouble(deal, DEAL_VOLUME);
                   opened_at = (datetime)HistoryDealGetInteger(deal, DEAL_TIME);
                   position_type = (deal_type == DEAL_TYPE_SELL ? POSITION_TYPE_SELL : POSITION_TYPE_BUY);
@@ -998,7 +1000,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.028 initialized.");
+   Print("[KBPARI] MT5 EA 1.031 initialized.");
    PrintFormat("[KBPARI] Signal engine market-data feed enabled for chart symbol %s only.", _Symbol);
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
