@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.019"
+#property version   "1.020"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -197,11 +197,20 @@ void ForgetBotClosed(ulong ticket)
 
 bool IsManagedSymbol(string symbol)
 {
+   // Each EA instance is isolated to the symbol of its chart.
+   // The Worker/Supabase config may contain multiple enabled symbols,
+   // but this EA instance must never request/manage another symbol.
+   if(symbol != _Symbol)
+      return false;
+
+   // If the config contains an enabled-symbol list, the chart symbol
+   // must also be present in that list.
    if(ArraySize(g_symbols) == 0)
-      return symbol == "XAUUSD" || symbol == "EURUSD" || symbol == "GBPUSD";
+      return true;
 
    for(int i=0; i<ArraySize(g_symbols); i++)
-      if(g_symbols[i] == symbol) return true;
+      if(g_symbols[i] == _Symbol)
+         return true;
 
    return false;
 }
@@ -279,7 +288,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.018",
+      "1.020",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -296,63 +305,61 @@ void SendHeartbeat()
 
 bool SendMarketData()
 {
-   string symbols[];
-   int count = ArraySize(g_symbols);
-   if(count > 0)
+   // IMPORTANT: one EA instance processes ONLY the symbol of its chart.
+   // Example: an EA attached to XAUUSD sends only XAUUSD candles.
+   // It must never request EURUSD/GBPUSD market data from this chart.
+   string symbol = _Symbol;
+
+   if(!IsManagedSymbol(symbol))
+      return false;
+
+   static datetime last_sent = 0;
+
+   if(!SymbolSelect(symbol, true))
+      return false;
+
+   datetime closed_bar_time = iTime(symbol, PERIOD_M1, 1);
+   if(closed_bar_time <= 0 || closed_bar_time == last_sent)
+      return false;
+
+   MqlRates rates[];
+   int copied = CopyRates(symbol, PERIOD_M1, 1, 80, rates);
+   if(copied < 30)
+      return false;
+
+   string body = StringFormat("{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"candles\":[",
+                              JsonEscape(symbol));
+
+   for(int i=0; i<copied; i++)
    {
-      ArrayResize(symbols, count);
-      for(int i=0; i<count; i++) symbols[i] = g_symbols[i];
+      if(i > 0) body += ",";
+      body += StringFormat("{\"time\":%I64d,\"open\":%.10f,\"high\":%.10f,\"low\":%.10f,\"close\":%.10f,\"volume\":%I64d}",
+                           (long)rates[i].time,
+                           rates[i].open,
+                           rates[i].high,
+                           rates[i].low,
+                           rates[i].close,
+                           (long)rates[i].tick_volume);
    }
-   else
+   body += "]}";
+
+   string response_text;
+   int status;
+   if(HttpRequest("POST", "/market-data", body, response_text, status) &&
+      status >= 200 && status < 300)
    {
-      ArrayResize(symbols, 3);
-      symbols[0] = "XAUUSD";
-      symbols[1] = "EURUSD";
-      symbols[2] = "GBPUSD";
-      count = 3;
+      last_sent = closed_bar_time;
+
+      if(StringFind(response_text, "\"generated\":true") >= 0)
+         PrintFormat("[%s] Signal engine generated a new signal.", symbol);
+
+      return true;
    }
 
-   static datetime last_sent[];
-   if(ArraySize(last_sent) != count) ArrayResize(last_sent, count);
+   if(status > 0)
+      PrintFormat("[%s] Market data HTTP %d response=%s", symbol, status, response_text);
 
-   bool sent_any = false;
-   for(int s=0; s<count; s++)
-   {
-      string symbol = symbols[s];
-      if(!SymbolSelect(symbol, true)) continue;
-
-      datetime closed_bar_time = iTime(symbol, PERIOD_M1, 1);
-      if(closed_bar_time <= 0 || closed_bar_time == last_sent[s]) continue;
-
-      MqlRates rates[];
-      int copied = CopyRates(symbol, PERIOD_M1, 1, 80, rates);
-      if(copied < 30) continue;
-
-      string body = StringFormat("{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"candles\":[", JsonEscape(symbol));
-      for(int i=0; i<copied; i++)
-      {
-         if(i > 0) body += ",";
-         body += StringFormat("{\"time\":%I64d,\"open\":%.10f,\"high\":%.10f,\"low\":%.10f,\"close\":%.10f,\"volume\":%I64d}",
-                              (long)rates[i].time, rates[i].open, rates[i].high, rates[i].low, rates[i].close, (long)rates[i].tick_volume);
-      }
-      body += "]}";
-
-      string response_text;
-      int status;
-      if(HttpRequest("POST", "/market-data", body, response_text, status) && status >= 200 && status < 300)
-      {
-         last_sent[s] = closed_bar_time;
-         sent_any = true;
-
-         if(StringFind(response_text, "\"generated\":true") >= 0)
-            PrintFormat("[%s] Signal engine generated a new signal.", symbol);
-      }
-      else if(status > 0)
-      {
-         PrintFormat("[%s] Market data HTTP %d response=%s", symbol, status, response_text);
-      }
-   }
-   return sent_any;
+   return false;
 }
 
 bool SendPositionSnapshot(ulong ticket)
@@ -518,7 +525,7 @@ bool PollAndExecuteSignal()
 
    string json;
    int status;
-   if(!HttpRequest("GET", "/signals?limit=1", "", json, status) || status != 200)
+   if(!HttpRequest("GET", "/signals?symbol=" + _Symbol + "&limit=1", "", json, status) || status != 200)
       return false;
 
    string signal = ExtractFirstSignal(json);
@@ -666,8 +673,14 @@ void SyncOpenPositions()
    for(int i=PositionsTotal()-1; i>=0; i--)
    {
       ulong ticket = PositionGetTicket(i);
-      if(ticket > 0 && PositionSelectByTicket(ticket))
-         SendPositionSnapshot(ticket);
+      if(ticket == 0 || !PositionSelectByTicket(ticket))
+         continue;
+
+      // Never sync positions belonging to another chart symbol.
+      if(!IsManagedSymbol(PositionGetString(POSITION_SYMBOL)))
+         continue;
+
+      SendPositionSnapshot(ticket);
    }
 }
 
@@ -811,8 +824,8 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.019 initialized.");
-   Print("[KBPARI] Signal engine market-data feed enabled.");
+   Print("[KBPARI] MT5 EA 1.020 initialized.");
+   PrintFormat("[KBPARI] Signal engine market-data feed enabled for chart symbol %s only.", _Symbol);
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
 }
