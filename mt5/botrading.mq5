@@ -88,12 +88,12 @@ string JsonString(string json, string key, string fallback="")
    if(p < 0) return fallback;
    p += StringLen(needle);
    while(p < StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\t')) p++;
-   if(p >= StringLen(json) || StringGetCharacter(json,p) != '"') return fallback;
+   if(p >= StringLen(json) || StringGetCharacter(json,p) != CharToString(34)) return fallback;
    p++;
    int e = p;
    while(e < StringLen(json))
    {
-      if(StringGetCharacter(json,e)=='"' && (e==p || StringGetCharacter(json,e-1)!='\\')) break;
+      if(StringGetCharacter(json,e)==CharToString(34) && (e==p || StringGetCharacter(json,e-1)!=CharToString(92))) break;
       e++;
    }
    if(e >= StringLen(json)) return fallback;
