@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.033"
+#property version   "1.034"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -309,7 +309,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.033",
+      "1.034",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -340,25 +340,46 @@ bool SendMarketData()
    if(closed_bar_time <= 0 || closed_bar_time == last_sent)
       return false;
 
-   MqlRates rates[];
-   int copied = CopyRates(symbol, PERIOD_M1, 1, 80, rates);
-   if(copied < 30)
-      return false;
+   // Build the payload directly from the MT5 series functions instead of
+   // CopyRates(). CopyRates() can return a cached/history slice whose order
+   // or newest bar is not aligned with the live chart series. The iTime/iOpen/
+   // iHigh/iLow/iClose/iVolume calls below always address the exact M1 shifts
+   // on the live XAUUSD chart.
+   const int requested_candles = 80;
+   int copied = 0;
 
    string body = StringFormat("{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"candles\":[",
                               JsonEscape(symbol));
 
-   for(int i=0; i<copied; i++)
+   for(int shift = requested_candles; shift >= 1; shift--)
    {
-      if(i > 0) body += ",";
+      datetime bar_time = iTime(symbol, PERIOD_M1, shift);
+      if(bar_time <= 0)
+         continue;
+
+      double bar_open = iOpen(symbol, PERIOD_M1, shift);
+      double bar_high = iHigh(symbol, PERIOD_M1, shift);
+      double bar_low = iLow(symbol, PERIOD_M1, shift);
+      double bar_close = iClose(symbol, PERIOD_M1, shift);
+      long bar_volume = (long)iVolume(symbol, PERIOD_M1, shift);
+
+      if(bar_open <= 0.0 || bar_high <= 0.0 || bar_low <= 0.0 || bar_close <= 0.0)
+         continue;
+
+      if(copied > 0) body += ",";
       body += StringFormat("{\"time\":%I64d,\"open\":%.10f,\"high\":%.10f,\"low\":%.10f,\"close\":%.10f,\"volume\":%I64d}",
-                           (long)rates[i].time,
-                           rates[i].open,
-                           rates[i].high,
-                           rates[i].low,
-                           rates[i].close,
-                           (long)rates[i].tick_volume);
+                           (long)bar_time,
+                           bar_open,
+                           bar_high,
+                           bar_low,
+                           bar_close,
+                           bar_volume);
+      copied++;
    }
+
+   if(copied < 30)
+      return false;
+
    body += "]}";
 
    string response_text;
@@ -981,7 +1002,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.033 initialized.");
+   Print("[KBPARI] MT5 EA 1.034 initialized.");
    PrintFormat("[KBPARI] Signal engine market-data feed enabled for chart symbol %s only.", _Symbol);
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
