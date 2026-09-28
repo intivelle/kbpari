@@ -1,4 +1,4 @@
-name = "kbpari-worker"
+name = "kbpari"
 main = "src/index.js"
 compatibility_date = "2026-09-28"
 
