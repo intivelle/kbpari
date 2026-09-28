@@ -154,7 +154,7 @@ async function handleSignalsGet(request, env) {
       params.set("select", "*");
       params.set("status", "eq.NEW");
       params.set("signal", "neq.NONE");
-      params.set("order", "created_at.asc");
+      params.set("order", "created_at.desc");
       params.set("limit", url.searchParams.get("limit") || "20");
 
       const symbol = url.searchParams.get("symbol");
