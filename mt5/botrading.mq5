@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.029"
+#property version   "1.030"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -944,7 +944,7 @@ void CheckForManualCloses()
                int status;
                HttpRequest("POST", "/execution", body, response_text, status);
                SendTransaction(old_ticket, symbol, position_type==POSITION_TYPE_BUY ? "BUY" : "SELL",
-                               volume, entry_price, close_price, pips, profit,
+                               volume, entry_price, stop_loss, close_price, pips, profit,
                                "MANUAL_OR_EXTERNAL_CLOSE", opened_at, close_time);
                MarkPositionClosed(old_ticket, symbol, position_type==POSITION_TYPE_BUY ? "BUY" : "SELL",
                                   volume, entry_price, close_price, pips, profit,
