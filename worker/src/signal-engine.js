@@ -212,8 +212,13 @@ export async function ingestCandlesAndGenerate(env, body) {
   let timestampOffsetMs = 0;
   if (Number.isFinite(newestMs)) {
     const aheadMs = newestMs - Date.now();
-    if (aheadMs > 60 * 60 * 1000 && aheadMs < 6 * 60 * 60 * 1000) {
-      timestampOffsetMs = aheadMs;
+    // Broker/server timestamps can be several hours ahead of UTC.
+    // Infer the fixed whole-hour offset from the newest candle. Use a
+    // 30-minute tolerance so UTC+1..UTC+5 style broker offsets are handled
+    // reliably, including when the request lands mid-minute.
+    const hourMs = 60 * 60 * 1000;
+    if (aheadMs > 30 * 60 * 1000 && aheadMs < 6 * hourMs) {
+      timestampOffsetMs = Math.round(aheadMs / hourMs) * hourMs;
     }
   }
 
