@@ -280,6 +280,35 @@ async function handlePositionsPost(request, env) {
   return response({ success: true, position: data?.[0] ?? data });
 }
 
+async function handleTransactionsPost(request, env) {
+  const body = await readJson(request);
+  if (body.mt5_ticket == null || !body.symbol || !body.side) {
+    throw new Error("mt5_ticket, symbol and side are required");
+  }
+
+  const row = {
+    mt5_ticket: body.mt5_ticket,
+    symbol: body.symbol,
+    side: body.side,
+    volume: body.volume ?? 0,
+    entry_price: body.entry_price ?? 0,
+    close_price: body.close_price ?? 0,
+    pips: body.pips ?? null,
+    profit: body.profit ?? 0,
+    close_reason: body.close_reason ?? "UNKNOWN",
+    opened_at: body.opened_at ?? null,
+    closed_at: body.closed_at ?? new Date().toISOString(),
+  };
+
+  const data = await supabaseRequest(env, "transactions?on_conflict=mt5_ticket", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify(row),
+  });
+
+  return response({ success: true, transaction: data?.[0] ?? data });
+}
+
 async function handleExecutionPost(request, env) {
   const body = await readJson(request);
   if (!body.action || !body.symbol) {
@@ -347,7 +376,7 @@ async function route(request, env) {
   if (request.method === "POST" && url.pathname === "/positions") {
     return handlePositionsPost(request, env);
   }
-  if (request.method === "POST" && url.pathname === "/execution") {
+  if (request.method === "POST" && url.pathname === "/transactions") {\n    return handleTransactionsPost(request, env);\n  }\n  if (request.method === "POST" && url.pathname === "/execution") {
     return handleExecutionPost(request, env);
   }
 
