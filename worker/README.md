@@ -20,6 +20,6 @@ Secrets are runtime configuration and must not be committed to GitHub.
 - `POST /orders` — submit an order record
 - `GET /positions` — read positions
 - `POST /positions` — synchronize a position
-- `POST /execution` — record an execution
+- `POST /execution`\n- `POST /transactions` — record an execution
 
 The Worker reads target-profit settings dynamically from Supabase. It does not contain a hard-coded target-profit value.
