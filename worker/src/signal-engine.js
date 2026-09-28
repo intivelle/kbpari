@@ -92,7 +92,7 @@ export async function generateSignal(env, symbol) {
   const ema21Slope = ema21Now - ema21Prev;
   const closeNow = Number(last.close);
   const closePrev = Number(previous.close);
-  const atrThreshold = atr14 * 0.005;
+  const atrThreshold = atr14 * 0.001;
   const trendStrength = Math.abs(emaGapNow) / atr14;
 
   // One-candle confirmation replaces the previous 3-candle sequence.
@@ -102,14 +102,14 @@ export async function generateSignal(env, symbol) {
   const bullishTrend =
     emaGapNow > 0 &&
     ema9Slope > atrThreshold &&
-    ema21Slope >= 0 &&
-    trendStrength >= 0.01 &&
+    ema21Slope >= -atrThreshold &&
+    trendStrength >= 0.005 &&
     bullishCandle;
 
   const bearishTrend =
     emaGapNow < 0 &&
     ema9Slope < -atrThreshold &&
-    ema21Slope <= 0 &&
+    ema21Slope <= atrThreshold &&
     trendStrength >= 0.01 &&
     bearishCandle;
 
@@ -177,7 +177,7 @@ export async function generateSignal(env, symbol) {
     stop_loss: Number(stopLoss.toFixed(precision)),
     target_price: null,
     reason,
-    source: "EMA9_EMA21_ATR14_1CANDLE_CONFIRMATION",
+    source: "EMA9_EMA21_ATR14_AGGRESSIVE_1CANDLE",
     status: "NEW"
   };
 
