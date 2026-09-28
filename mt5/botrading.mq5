@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.031"
+#property version   "1.032"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -309,7 +309,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.031",
+      "1.032",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -505,16 +505,32 @@ double NormalizeVolume(string symbol, double volume)
 
 double CalculateVolume(string symbol, string action, double stop_loss)
 {
+   const double FIXED_VOLUME = 0.01;
+
    double minv = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
    double maxv = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
    double step = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
-   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
    double free_margin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
-   double risk_percent = MathMax(0.01, g_risk_percent);
-   double risk_money = balance * risk_percent / 100.0;
 
-   if(minv <= 0.0 || maxv <= 0.0 || step <= 0.0 || stop_loss <= 0.0 || free_margin <= 0.0)
+   if(minv <= 0.0 || maxv <= 0.0 || step <= 0.0 || free_margin <= 0.0)
       return 0.0;
+
+   // The bot uses a strict fixed 0.01 lot size during the learning/testing phase.
+   // Do not silently increase the lot if the broker minimum is higher.
+   if(FIXED_VOLUME < minv || FIXED_VOLUME > maxv)
+   {
+      PrintFormat("[%s] Trade skipped: fixed volume %.2f is outside broker range %.2f - %.2f",
+                  symbol, FIXED_VOLUME, minv, maxv);
+      return 0.0;
+   }
+
+   double step_units = FIXED_VOLUME / step;
+   if(MathAbs(step_units - MathRound(step_units)) > 0.0000001)
+   {
+      PrintFormat("[%s] Trade skipped: fixed volume %.2f does not match broker volume step %.4f",
+                  symbol, FIXED_VOLUME, step);
+      return 0.0;
+   }
 
    MqlTick tick;
    if(!SymbolInfoTick(symbol, tick))
@@ -526,95 +542,31 @@ double CalculateVolume(string symbol, string action, double stop_loss)
 
    ENUM_ORDER_TYPE order_type = (action == "BUY" ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
 
-   // Use the broker's own P/L calculation. This is safer than assuming
-   // tick value is constant, especially for XAUUSD and other CFDs.
-   double loss_per_lot = 0.0;
-   if(!OrderCalcProfit(order_type, symbol, 1.0, entry_price, stop_loss, loss_per_lot))
-   {
-      PrintFormat("[%s] Volume calc failed: OrderCalcProfit error=%d", symbol, GetLastError());
-      return 0.0;
-   }
-
-   loss_per_lot = MathAbs(loss_per_lot);
-   if(loss_per_lot <= 0.0)
-      return 0.0;
-
-   double volume_by_risk = risk_money / loss_per_lot;
-   double volume = MathMin(maxv, volume_by_risk);
-   volume = MathFloor(volume / step) * step;
-
-   // Never round risk volume upward. If even the minimum lot exceeds the
-   // configured monetary risk, skip the trade rather than over-risking it.
-   if(volume < minv)
-   {
-      double min_loss = 0.0;
-      if(OrderCalcProfit(order_type, symbol, minv, entry_price, stop_loss, min_loss))
-      {
-         min_loss = MathAbs(min_loss);
-         if(min_loss > risk_money)
-         {
-            PrintFormat("[%s] Trade skipped: minimum volume %.2f would risk %.2f, limit %.2f",
-                        symbol, minv, min_loss, risk_money);
-            return 0.0;
-         }
-      }
-      volume = minv;
-   }
-
-   // Reserve 10%% of free margin. Reduce the volume by broker volume steps
-   // until the actual margin requirement is affordable.
+   // Keep a 10% free-margin reserve so fixed-size orders do not consume
+   // essentially all available margin.
    double usable_margin = free_margin * 0.90;
    double margin_required = 0.0;
-   int guard = 0;
 
-   while(volume >= minv && guard < 10000)
+   ResetLastError();
+   if(!OrderCalcMargin(order_type, symbol, FIXED_VOLUME, entry_price, margin_required))
    {
-      ResetLastError();
-      if(OrderCalcMargin(order_type, symbol, volume, entry_price, margin_required))
-      {
-         if(margin_required <= usable_margin)
-            break;
-      }
-
-      volume -= step;
-      volume = NormalizeDouble(volume, 8);
-      guard++;
-   }
-
-   if(volume < minv)
-   {
-      double min_margin = 0.0;
-      if(OrderCalcMargin(order_type, symbol, minv, entry_price, min_margin))
-      {
-         PrintFormat("[%s] Trade skipped: minimum volume %.2f requires margin %.2f, usable free margin %.2f",
-                     symbol, minv, min_margin, usable_margin);
-      }
-      else
-      {
-         PrintFormat("[%s] Trade skipped: unable to calculate margin for minimum volume %.2f",
-                     symbol, minv);
-      }
+      PrintFormat("[%s] Trade skipped: unable to calculate margin for fixed volume %.2f error=%d",
+                  symbol, FIXED_VOLUME, GetLastError());
       return 0.0;
    }
 
-   volume = NormalizeVolume(symbol, volume);
-
-   // Final margin check after normalization.
-   if(!OrderCalcMargin(order_type, symbol, volume, entry_price, margin_required) ||
-      margin_required > usable_margin)
+   if(margin_required > usable_margin)
    {
-      PrintFormat("[%s] Trade skipped: final volume %.2f requires margin %.2f, usable free margin %.2f",
-                  symbol, volume, margin_required, usable_margin);
+      PrintFormat("[%s] Trade skipped: fixed volume %.2f requires margin %.2f, usable free margin %.2f",
+                  symbol, FIXED_VOLUME, margin_required, usable_margin);
       return 0.0;
    }
 
-   PrintFormat("[%s] Volume calculated: action=%s balance=%.2f free_margin=%.2f risk=%.2f risk_limit=%.2f loss_1lot=%.2f volume=%.2f margin=%.2f",
-               symbol, action, balance, free_margin, risk_money, risk_money,
-               loss_per_lot, volume, margin_required);
+   PrintFormat("[%s] Fixed volume: action=%s volume=%.2f entry=%.5f margin=%.2f",
+               symbol, action, FIXED_VOLUME, entry_price, margin_required);
 
-   return volume;
+   return FIXED_VOLUME;
 }
-
 
 
 double PrepareValidStopLoss(string symbol, string action, double requested_sl, double bid, double ask, bool &adjusted)
@@ -1000,7 +952,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.031 initialized.");
+   Print("[KBPARI] MT5 EA 1.032 initialized.");
    PrintFormat("[KBPARI] Signal engine market-data feed enabled for chart symbol %s only.", _Symbol);
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
