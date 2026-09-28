@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.038"
+#property version   "1.039"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -669,7 +669,7 @@ void SendHeartbeat()
       StringFormat(
          "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
          JsonEscape(InpBotID),
-         "1.038",
+         "1.039",
          AccountInfoInteger(ACCOUNT_LOGIN),
          AccountInfoDouble(ACCOUNT_BALANCE),
          AccountInfoDouble(ACCOUNT_EQUITY),
@@ -740,6 +740,12 @@ bool SendMarketData()
    }
 
    const int requested_candles = 80;
+
+   // MT5 iTime() uses broker/server time. The Worker stores UTC.
+   // Convert the broker-server candle timestamps to UTC explicitly.
+   // This replaces the old Worker-side timezone guessing and keeps the
+   // conversion deterministic for historical candles as well.
+   int server_utc_offset = (int)(TimeCurrent() - TimeGMT());
 
    int copied = 0;
 
@@ -813,10 +819,12 @@ bool SendMarketData()
       if(copied > 0)
          body += ",";
 
+      datetime utc_bar_time = bar_time - server_utc_offset;
+
       body +=
          StringFormat(
             "{\"time\":%I64d,\"open\":%.10f,\"high\":%.10f,\"low\":%.10f,\"close\":%.10f,\"volume\":%I64d}",
-            (long)bar_time,
+            (long)utc_bar_time,
             bar_open,
             bar_high,
             bar_low,
@@ -2899,7 +2907,7 @@ void CheckForManualCloses()
 }
 
 // ============================================================
-// EA TIMER 1.038
+// EA TIMER 1.039
 //
 // URUTAN BARU:
 //
