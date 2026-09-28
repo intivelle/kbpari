@@ -20,7 +20,7 @@ async function loadConfig(){
   $("mode").textContent=data.mode;
   $("targetProfit").textContent=num(data.target_profit_pips)+" PIP";
   $("targetLoss").textContent=num(data.target_loss_pips)+" PIP";
-  $("targetLossReadonly").textContent=num(data.target_loss_pips)+" PIP";
+  $("targetLossReadonly").textContent=(Number(data.target_profit_pips||0)*2).toFixed(2)+" PIP";
   $("risk").textContent=num(data.risk_percent)+"%";
   $("maxPositions").textContent=data.max_positions;
   $("targetProfitInput").value=data.target_profit_pips;
@@ -62,7 +62,7 @@ async function loadSystem(){
   $("equity").textContent=money(hb?.equity);
   $("eaVersion").textContent=hb?.ea_version||"—";
   $("systemEaVersion").textContent=hb?.ea_version||"—";
-  $("heartbeat").textContent=hb ? date(hb.created_at) : "—";
+  $("heartbeat").textContent=hb ? date(hb.created_at) : "—";\n  $("systemHeartbeat").textContent=hb ? date(hb.created_at) : "—";
   if(WORKER_URL){
     try{
       const r=await fetch(WORKER_URL+"/health",{cache:"no-store"});
@@ -148,7 +148,7 @@ $("saveSettings").onclick=async()=>{
     enabled:$("enabledInput").checked
   };
   const {error}=await supabase.from("bot_config").update(payload).eq("id",config.id);
-  $("settingsMsg").textContent=error ? error.message : "Settings tersimpan. Target Loss dibuat otomatis ×2.";
+  $("settingsMsg").textContent=error ? error.message : "Settings tersimpan. Target Loss otomatis = Target Profit × 2.";
   if(!error) await refresh();
 };
 
