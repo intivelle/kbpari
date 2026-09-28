@@ -144,9 +144,10 @@ async function handleHeartbeat(request, env) {
 
 async function handleSignalsGet(request, env) {
   const url = new URL(request.url);
+  const requestedSymbol = url.searchParams.get("symbol");
 
-  // Keep config and signal lookup independent so a slow config request cannot
-  // unnecessarily delay signal delivery. The EA polls this endpoint frequently.
+  // Config and signal lookup stay independent so a slow config request cannot
+  // unnecessarily delay signal delivery.
   const [config, data] = await Promise.all([
     getConfig(env),
     (async () => {
@@ -157,63 +158,109 @@ async function handleSignalsGet(request, env) {
       params.set("order", "created_at.desc");
       params.set("limit", url.searchParams.get("limit") || "20");
 
-      const symbol = url.searchParams.get("symbol");
-      if (symbol) params.set("symbol", `eq.${symbol}`);
+      if (requestedSymbol) {
+        params.set("symbol", "eq." + requestedSymbol);
+      }
 
-      return await supabaseRequest(env, `trading_signals?${params.toString()}`);
+      return await supabaseRequest(env, "trading_signals?" + params.toString());
     })(),
   ]);
 
-  if (!config || !config.enabled || config.mode !== "AUTO") {
+  if (!config) {
+    await writeSignalDiagnostic(env, "SIGNAL_POLL_BLOCKED", "Bot configuration not found", requestedSymbol, {
+      requested_symbol: requestedSymbol,
+      reason: "NO_CONFIG",
+    });
     return response({ success: true, signals: [] });
   }
 
-  const candidate = data || [];
-
-  // MT5 is the source of truth for live positions. Do not block signal
-  // delivery using the Supabase positions snapshot, which can be stale.
-  // Only apply a short post-close cooldown to prevent immediate churn.
-  const filtered = [];
-  for (const signal of candidate) {
-    const recentClose = await supabaseRequest(
-      env,
-      `executions?select=executed_at&symbol=eq.${encodeURIComponent(signal.symbol)}&action=eq.CLOSE&executed_at=gte.${encodeURIComponent(new Date(Date.now()-60000).toISOString())}&order=executed_at.desc&limit=1`
-    );
-
-    if (recentClose?.length) continue;
-
-    filtered.push(signal);
-    break;
+  if (!config.enabled || config.mode !== "AUTO") {
+    await writeSignalDiagnostic(env, "SIGNAL_POLL_BLOCKED", "Signal delivery disabled by bot configuration", requestedSymbol, {
+      requested_symbol: requestedSymbol,
+      enabled: config.enabled,
+      mode: config.mode,
+      reason: "CONFIG_DISABLED_OR_NOT_AUTO",
+    });
+    return response({ success: true, signals: [] });
   }
+
+  const candidate = Array.isArray(data) ? data : [];
+
+  // MT5 is the source of truth for live positions. The previous implementation
+  // used a 60-second executions/CLOSE cooldown here. That could suppress a valid
+  // NEW signal even when the signal itself was created before the close. Signal
+  // delivery is now based only on the NEW signal queue; MT5 enforces max_positions
+  // and position management.
+  if (!candidate.length) {
+    return response({ success: true, signals: [] });
+  }
+
+  const selected = candidate[0];
+
+  await writeSignalDiagnostic(
+    env,
+    "SIGNAL_DELIVERY_CANDIDATE",
+    "Candidate " + selected.signal + " is eligible for MT5 delivery",
+    selected.symbol,
+    {
+      signal_id: selected.id,
+      signal_created_at: selected.created_at,
+      signal_status: selected.status,
+      signal: selected.signal,
+      requested_symbol: requestedSymbol,
+      candidate_count: candidate.length,
+      signal_reason: selected.reason,
+      signal_source: selected.source,
+    }
+  );
 
   // Keep the audit trail server-side so signal delivery can be reconstructed
   // even when the MT5 terminal log is unavailable.
-  if (filtered.length) {
-    const s = filtered[0];
+  const s = selected;
+  await supabaseRequest(env, "bot_logs", {
+    method: "POST",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({
+      level: "INFO",
+      component: "WORKER",
+      event: "SIGNAL_DELIVERED",
+      message: "Signal " + s.signal + " delivered to MT5",
+      symbol: s.symbol,
+      mt5_ticket: null,
+      metadata: {
+        signal_id: s.id,
+        confidence: s.confidence,
+        signal_created_at: s.created_at,
+        signal_reason: s.reason,
+        signal_source: s.source,
+        candidate_count: candidate.length,
+      }
+    })
+  });
+
+  return response({ success: true, signals: [selected] }, 200, {
+    "x-kbpari-signal-id": String(selected.id),
+  });
+}
+
+async function writeSignalDiagnostic(env, event, message, symbol, metadata = {}) {
+  try {
     await supabaseRequest(env, "bot_logs", {
       method: "POST",
       headers: { Prefer: "return=minimal" },
       body: JSON.stringify({
         level: "INFO",
         component: "WORKER",
-        event: "SIGNAL_DELIVERED",
-        message: `Signal ${s.signal} delivered to MT5`,
-        symbol: s.symbol,
+        event,
+        message,
+        symbol: symbol || null,
         mt5_ticket: null,
-        metadata: {
-          signal_id: s.id,
-          confidence: s.confidence,
-          signal_created_at: s.created_at,
-          signal_reason: s.reason,
-          signal_source: s.source
-        }
-      })
+        metadata,
+      }),
     });
+  } catch {
+    // Diagnostics must never prevent signal delivery.
   }
-
-  return response({ success: true, signals: filtered }, 200, filtered.length
-    ? { "x-kbpari-signal-id": String(filtered[0].id) }
-    : {});
 }
 
 async function handleSignalsPost(request, env) {
