@@ -58,6 +58,18 @@ export async function generateSignal(env, symbol) {
   const closes = candles.map(c => Number(c.close));
   const last = candles[candles.length - 1];
   const previous = candles[candles.length - 2];
+  const prior2 = candles[candles.length - 3];
+  const prior3 = candles[candles.length - 4];
+
+  const configRows = await db(
+    env,
+    "bot_config?select=enabled,mode,target_profit_pips,target_loss_pips&limit=1"
+  );
+  const botConfig = configRows?.[0];
+  if (!botConfig) return { generated: false, reason: "bot_config_unavailable" };
+  if (!botConfig.enabled || botConfig.mode !== "AUTO") {
+    return { generated: false, reason: "bot_not_in_auto" };
+  }
 
   const ema9Now = ema(closes, 9);
   const ema21Now = ema(closes, 21);
@@ -83,17 +95,29 @@ export async function generateSignal(env, symbol) {
   const atrThreshold = atr14 * 0.005;
   const trendStrength = Math.abs(emaGapNow) / atr14;
 
+  const threeUpCloses =
+    closeNow > closePrev &&
+    closePrev > Number(prior2.close) &&
+    Number(prior2.close) > Number(prior3.close);
+
+  const threeDownCloses =
+    closeNow < closePrev &&
+    closePrev < Number(prior2.close) &&
+    Number(prior2.close) < Number(prior3.close);
+
   const bullishTrend =
     emaGapNow > 0 &&
     ema9Slope > atrThreshold &&
     ema21Slope >= 0 &&
-    trendStrength >= 0.01;
+    trendStrength >= 0.01 &&
+    threeUpCloses;
 
   const bearishTrend =
     emaGapNow < 0 &&
     ema9Slope < -atrThreshold &&
     ema21Slope <= 0 &&
-    trendStrength >= 0.01;
+    trendStrength >= 0.01 &&
+    threeDownCloses;
 
   let action = null;
   let reason = null;
@@ -137,7 +161,15 @@ export async function generateSignal(env, symbol) {
   }
 
   const price = Number(last.close);
-  const stopDistance = atr14 * 1.5;
+  const targetLossPips = Number(botConfig.target_loss_pips);
+  if (!Number.isFinite(targetLossPips) || targetLossPips <= 0) {
+    return { generated: false, reason: "invalid_target_loss_pips" };
+  }
+
+  // Broker-side protection must match the dashboard-controlled Target Loss.
+  // XAUUSD: 1 pip = 0.01 price. FX: 1 pip = 0.0001 price.
+  const pipSize = symbol === "XAUUSD" ? 0.01 : 0.0001;
+  const stopDistance = targetLossPips * pipSize;
   const stopLoss = action === "BUY" ? price - stopDistance : price + stopDistance;
   const precision = decimals(symbol);
 
@@ -151,7 +183,7 @@ export async function generateSignal(env, symbol) {
     stop_loss: Number(stopLoss.toFixed(precision)),
     target_price: null,
     reason,
-    source: "EMA9_EMA21_ATR14",
+    source: "EMA9_EMA21_ATR14_3CLOSE_CONFIRMATION",
     status: "NEW"
   };
 
