@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.035"
+#property version   "1.036"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -309,7 +309,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.035",
+      "1.036",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -820,7 +820,7 @@ bool PollAndExecuteSignal()
    int exec_status;
    HttpRequest("POST", "/execution", exec_body, exec_response, exec_status);
 
-   PrintFormat("[%s] %s executed order=%I64u position=%I64u volume=%.2f entry=%.5f SL=%.5f target_loss=%.2f pip%s", symbol, action, order_ticket, position_ticket, volume, fill_price, valid_stop_loss, valid_take_profit, g_target_profit_pips, sl_adjusted ? " SL-adjusted" : "", tp_adjusted ? " TP-adjusted" : "");
+   PrintFormat("[%s] %s executed order=%I64u position=%I64u volume=%.2f entry=%.5f SL=%.5f TP=%.5f target_profit=%.2f pip%s%s", symbol, action, order_ticket, position_ticket, volume, fill_price, valid_stop_loss, valid_take_profit, g_target_profit_pips, sl_adjusted ? " SL-adjusted" : "", tp_adjusted ? " TP-adjusted" : "");
    return true;
 }
 
@@ -1012,7 +1012,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.035 initialized.");
+   Print("[KBPARI] MT5 EA 1.036 initialized.");
    PrintFormat("[KBPARI] Signal engine market-data feed enabled for chart symbol %s only.", _Symbol);
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
