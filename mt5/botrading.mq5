@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.041"
+#property version   "1.042"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -669,7 +669,7 @@ void SendHeartbeat()
       StringFormat(
          "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
          JsonEscape(InpBotID),
-         "1.040",
+         "1.042",
          AccountInfoInteger(ACCOUNT_LOGIN),
          AccountInfoDouble(ACCOUNT_BALANCE),
          AccountInfoDouble(ACCOUNT_EQUITY),
@@ -1940,11 +1940,9 @@ bool PollAndExecuteSignal()
          ""
       );
 
+   // Inverse execution is handled by the Worker.
+   // The EA executes the side delivered by /signal without flipping it again.
    string execution_action = action;
-   if(action == "BUY")
-      execution_action = "SELL";
-   else if(action == "SELL")
-      execution_action = "BUY";
 
    double stop_loss =
       JsonNumber(
@@ -2316,7 +2314,7 @@ bool PollAndExecuteSignal()
    // =========================================================
    // 18. EXISTING MT5 EXECUTION
    //
-   // Execute inverse side; original signal remains in the audit payload.
+   // Execute the side delivered by Worker; original signal remains in the audit payload.
    // =========================================================
 
    bool ok = false;
@@ -2919,7 +2917,7 @@ void CheckForManualCloses()
 }
 
 // ============================================================
-// EA TIMER 1.040
+// EA TIMER 1.042
 //
 // URUTAN BARU:
 //
@@ -3048,7 +3046,7 @@ int OnInit()
    RefreshConfig();
 
    Print(
-      "[KBPARI] MT5 EA 1.041 initialized. Inverse execution ON: BUY->SELL, SELL->BUY."
+      "[KBPARI] MT5 EA 1.042 initialized. Inverse execution is Worker-controlled (EA does not double-invert)."
    );
 
    PrintFormat(
