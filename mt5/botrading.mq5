@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.014"
+#property version   "1.015"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -41,10 +41,12 @@ struct PositionSnapshot
 
 string JsonEscape(string value)
 {
-   StringReplace(value, "\\", "\\\\");
-   StringReplace(value, "\"", "\\\"");
-   StringReplace(value, "\r", "\\r");
-   StringReplace(value, "\n", "\\n");
+   string slash = CharToString(92);
+   string quote = CharToString(34);
+   StringReplace(value, slash, slash + slash);
+   StringReplace(value, quote, slash + quote);
+   StringReplace(value, CharToString(13), slash + "r");
+   StringReplace(value, CharToString(10), slash + "n");
    return value;
 }
 
@@ -207,9 +209,9 @@ bool IsManagedSymbol(string symbol)
 void ParseSymbols(string json)
 {
    ArrayResize(g_symbols, 0);
-   int p = StringFind(json, "\"symbols\":[");
+   int p = StringFind(json, CharToString(34) + "symbols" + CharToString(34) + ":[");
    if(p < 0) return;
-   p += StringLen("\"symbols\":[");
+   p += StringLen(CharToString(34) + "symbols" + CharToString(34) + ":[");
    int end = StringFind(json, "]", p);
    if(end < 0) return;
 
@@ -217,9 +219,9 @@ void ParseSymbols(string json)
    int cursor = 0;
    while(cursor < StringLen(section))
    {
-      int q1 = StringFind(section, "\"", cursor);
+      int q1 = StringFind(section, CharToString(34), cursor);
       if(q1 < 0) break;
-      int q2 = StringFind(section, "\"", q1+1);
+      int q2 = StringFind(section, CharToString(34), q1+1);
       if(q2 < 0) break;
       string symbol = StringSubstr(section, q1+1, q2-q1-1);
       if(StringLen(symbol) > 0)
@@ -245,7 +247,7 @@ bool RefreshConfig()
       return false;
    }
 
-   int config_pos = StringFind(body, "\"config\":");
+   int config_pos = StringFind(body, CharToString(34) + "config" + CharToString(34) + ":");
    if(config_pos < 0)
    {
       Print("[KBPARI] Invalid config response");
@@ -277,7 +279,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.014",
+      "1.015",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -747,7 +749,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.014 initialized.");
+   Print("[KBPARI] MT5 EA 1.015 initialized.");
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
 }
