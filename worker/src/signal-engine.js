@@ -83,10 +83,14 @@ export async function generateSignal(env, symbol) {
       reason: "no_crossover",
       candle_time: last.candle_time,
       indicators: {
+        ema9_prev: Number(ema9Prev.toFixed(6)),
+        ema21_prev: Number(ema21Prev.toFixed(6)),
+        ema_gap_prev: Number((ema9Prev - ema21Prev).toFixed(6)),
         ema9: Number(ema9Now.toFixed(6)),
         ema21: Number(ema21Now.toFixed(6)),
         ema_gap: Number((ema9Now - ema21Now).toFixed(6)),
-        atr14: Number(atr14.toFixed(6))
+        atr14: Number(atr14.toFixed(6)),
+        cross_state: ema9Now > ema21Now ? "ABOVE" : "BELOW"
       }
     };
   }
