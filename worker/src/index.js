@@ -160,7 +160,54 @@ async function handleSignalsGet(request, env) {
   if (symbol) params.set("symbol", `eq.${symbol}`);
 
   const data = await supabaseRequest(env, `trading_signals?${params.toString()}`);
-  return response({ success: true, signals: data || [] });
+  const candidate = data || [];
+
+  // Safety gate: never stack multiple positions on the same symbol.
+  // Also enforce a short post-close cooldown to prevent rapid re-entry loops.
+  const filtered = [];
+  for (const signal of candidate) {
+    const openPositions = await supabaseRequest(
+      env,
+      `positions?select=mt5_ticket&symbol=eq.${encodeURIComponent(signal.symbol)}&status=eq.OPEN&limit=1`
+    );
+    if (openPositions?.length) continue;
+
+    const recentClose = await supabaseRequest(
+      env,
+      `executions?select=executed_at&symbol=eq.${encodeURIComponent(signal.symbol)}&action=eq.CLOSE&executed_at=gte.${encodeURIComponent(new Date(Date.now()-60000).toISOString())}&order=executed_at.desc&limit=1`
+    );
+    if (recentClose?.length) continue;
+
+    filtered.push(signal);
+    break;
+  }
+
+  // Keep the audit trail server-side so signal delivery can be reconstructed
+  // even when the MT5 terminal log is unavailable.
+  if (filtered.length) {
+    const s = filtered[0];
+    await supabaseRequest(env, "bot_logs", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        level: "INFO",
+        component: "WORKER",
+        event: "SIGNAL_DELIVERED",
+        message: `Signal ${s.signal} delivered to MT5`,
+        symbol: s.symbol,
+        mt5_ticket: null,
+        metadata: {
+          signal_id: s.id,
+          confidence: s.confidence,
+          signal_created_at: s.created_at,
+          signal_reason: s.reason,
+          signal_source: s.source
+        }
+      })
+    });
+  }
+
+  return response({ success: true, signals: filtered });
 }
 
 async function handleSignalsPost(request, env) {
@@ -325,6 +372,25 @@ async function handleTransactionsPost(request, env) {
   return response({ success: true, transaction: data?.[0] ?? data });
 }
 
+async function handleBotLogsPost(request, env) {
+  const body = await readJson(request);
+  const row = {
+    level: body.level ?? "INFO",
+    component: body.component ?? "UNKNOWN",
+    event: body.event ?? "EVENT",
+    message: body.message ?? "",
+    symbol: body.symbol ?? null,
+    mt5_ticket: body.mt5_ticket ?? null,
+    metadata: body.metadata ?? {},
+  };
+  const data = await supabaseRequest(env, "bot_logs", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(row),
+  });
+  return response({ success: true, log: data?.[0] ?? data });
+}
+
 async function handleExecutionPost(request, env) {
   const body = await readJson(request);
   if (!body.action || !body.symbol) {
@@ -412,6 +478,9 @@ async function route(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/execution") {
     return handleExecutionPost(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/bot-logs") {
+    return handleBotLogsPost(request, env);
   }
 
   return response({ success: false, error: "Not found" }, 404);
