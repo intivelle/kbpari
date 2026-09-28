@@ -83,7 +83,7 @@ bool HttpRequest(string method, string path, string body, string &response_text,
 
 string JsonString(string json, string key, string fallback="")
 {
-   string needle = "\"" + key + "\":";
+   string needle = CharToString(34) + key + CharToString(34) + ":";
    int p = StringFind(json, needle);
    if(p < 0) return fallback;
    p += StringLen(needle);
@@ -102,7 +102,7 @@ string JsonString(string json, string key, string fallback="")
 
 double JsonNumber(string json, string key, double fallback=0.0)
 {
-   string needle = "\"" + key + "\":";
+   string needle = CharToString(34) + key + CharToString(34) + ":";
    int p = StringFind(json, needle);
    if(p < 0) return fallback;
    p += StringLen(needle);
@@ -120,7 +120,7 @@ double JsonNumber(string json, string key, double fallback=0.0)
 
 bool JsonBool(string json, string key, bool fallback=false)
 {
-   string needle = "\"" + key + "\":";
+   string needle = CharToString(34) + key + CharToString(34) + ":";
    int p = StringFind(json, needle);
    if(p < 0) return fallback;
    p += StringLen(needle);
