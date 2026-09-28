@@ -429,7 +429,7 @@ bool PollAndExecuteSignal()
       return false;
 
    bool ok = false;
-   trade.SetTypeFillingBySymbol(symbol);
+   trade.SetExpertMagicNumber(260928);\n   trade.SetTypeFillingBySymbol(symbol);
 
    if(action == "BUY")
       ok = trade.Buy(volume, symbol, 0.0, stop_loss, 0.0, "KBPARI:" + id);
@@ -452,7 +452,7 @@ bool PollAndExecuteSignal()
 
    string order_body = StringFormat(
       "{\"client_order_id\":\"%s\",\"mt5_ticket\":%I64u,\"symbol\":\"%s\",\"side\":\"%s\",\"volume\":%.2f,\"requested_price\":%.8f,\"stop_loss\":%.8f,\"take_profit\":null,\"status\":\"FILLED\",\"signal_id\":\"%s\"}",
-      "KBPARI-" + id, ticket, JsonEscape(symbol), action, volume, fill_price, stop_loss, JsonEscape(id));
+      "KBPARI-" + id, order_ticket, JsonEscape(symbol), action, volume, fill_price, stop_loss, JsonEscape(id));
 
    string order_response;
    int order_status;
@@ -465,13 +465,13 @@ bool PollAndExecuteSignal()
 
    string exec_body = StringFormat(
       "{\"action\":\"OPEN\",\"symbol\":\"%s\",\"mt5_ticket\":%I64u,\"side\":\"%s\",\"volume\":%.2f,\"price\":%.8f,\"reason\":\"SIGNAL:%s\",\"execution_status\":\"SUCCESS\"}",
-      JsonEscape(symbol), ticket, action, volume, fill_price, JsonEscape(id));
+      JsonEscape(symbol), position_ticket, action, volume, fill_price, JsonEscape(id));
 
    string exec_response;
    int exec_status;
    HttpRequest("POST", "/execution", exec_body, exec_response, exec_status);
 
-   PrintFormat("[%s] %s executed ticket=%I64u volume=%.2f", symbol, action, ticket, volume);
+   PrintFormat("[%s] %s executed order=%I64u position=%I64u volume=%.2f", symbol, action, order_ticket, position_ticket, volume);
    return true;
 }
 
