@@ -344,10 +344,8 @@ bool SendMarketData()
          last_sent[s] = closed_bar_time;
          sent_any = true;
 
-         string generated = JsonString(response_text, "generated", "false");
-         string action = JsonString(response_text, "signal", "");
-         if(generated == "true")
-            PrintFormat("[%s] Signal generated: %s", symbol, action);
+         if(StringFind(response_text, "\"generated\":true") >= 0)
+            PrintFormat("[%s] Signal engine generated a new signal.", symbol);
       }
       else if(status > 0)
       {
