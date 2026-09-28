@@ -1,105 +1,48 @@
 name: Apply EA TP Fix
-
 on:
   push:
-    branches: [main]
-
+    branches:
+      - main
 permissions:
   contents: write
-
 jobs:
-  patch-ea:
+  patch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-      - name: Patch broker-side TP
-        shell: bash
+      - name: Patch EA
         run: |
-          set -e
-          FILE="mt5/botrading.mq5"
-          grep -q '#property version   "1.032"' "$FILE" || exit 0
           python3 - <<'PY'
           from pathlib import Path
-          p=Path("mt5/botrading.mq5")
-          s=p.read_text()
-          s=s.replace('#property version   "1.032"', '#property version   "1.033"', 1)
-          s=s.replace('"1.032",','"1.033",',1)
-          s=s.replace('Print("[KBPARI] MT5 EA 1.032 initialized.");','Print("[KBPARI] MT5 EA 1.033 initialized.");',1)
-          marker='string ExtractFirstSignal(string json)\n{'
-          helper='''double PrepareValidTakeProfit(string symbol, string action, double requested_tp, double bid, double ask, bool &adjusted)
-{
-   adjusted = false;
-   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-   double tick_size = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
-   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
-   long stops_level = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL);
-   long freeze_level = SymbolInfoInteger(symbol, SYMBOL_TRADE_FREEZE_LEVEL);
-   if(point <= 0.0) return requested_tp;
-   if(tick_size <= 0.0) tick_size = point;
-   double min_distance = (double)MathMax(stops_level, freeze_level) * point + tick_size;
-   double tp = requested_tp;
-   if(action == "BUY")
-   {
-      double min_tp = ask + min_distance;
-      if(tp <= 0.0 || tp < min_tp) { tp = min_tp; adjusted = true; }
-   }
-   else if(action == "SELL")
-   {
-      double max_tp = bid - min_distance;
-      if(tp <= 0.0 || tp > max_tp) { tp = max_tp; adjusted = true; }
-   }
-   tp = MathRound(tp / tick_size) * tick_size;
-   tp = NormalizeDouble(tp, digits);
-   if(adjusted)
-      PrintFormat("[%s] TP adjusted: requested=%.5f final=%.5f stops_level=%d freeze_level=%d point=%.5f tick_size=%.5f",
-                  symbol, requested_tp, tp, (int)stops_level, (int)freeze_level, point, tick_size);
-   return tp;
-}
-
-'''
-          if marker not in s: raise SystemExit("marker missing")
-          s=s.replace(marker,helper+marker,1)
-          old='''   bool sl_adjusted = false;
-   double valid_stop_loss = PrepareValidStopLoss(symbol, action, target_sl, tick.bid, tick.ask, sl_adjusted);
-
-   double volume = CalculateVolume(symbol, action, valid_stop_loss);'''
-          new='''   bool sl_adjusted = false;
-   double valid_stop_loss = PrepareValidStopLoss(symbol, action, target_sl, tick.bid, tick.ask, sl_adjusted);
-
-   // Broker-side TP from the dashboard Target Profit Pips.
-   double target_tp = 0.0;
-   if(g_target_profit_pips > 0.0 && pip_size > 0.0)
-   {
-      if(action == "BUY")
-         target_tp = execution_price + (g_target_profit_pips * pip_size);
-      else
-         target_tp = execution_price - (g_target_profit_pips * pip_size);
-   }
-
-   bool tp_adjusted = false;
-   double valid_take_profit = PrepareValidTakeProfit(symbol, action, target_tp, tick.bid, tick.ask, tp_adjusted);
-
-   double volume = CalculateVolume(symbol, action, valid_stop_loss);'''
-          if old not in s: raise SystemExit("trade setup marker missing")
-          s=s.replace(old,new,1)
-          s=s.replace('trade.Buy(volume, symbol, 0.0, valid_stop_loss, 0.0, "KBPARI:" + id);','trade.Buy(volume, symbol, 0.0, valid_stop_loss, valid_take_profit, "KBPARI:" + id);',1)
-          s=s.replace('trade.Sell(volume, symbol, 0.0, valid_stop_loss, 0.0, "KBPARI:" + id);','trade.Sell(volume, symbol, 0.0, valid_stop_loss, valid_take_profit, "KBPARI:" + id);',1)
-          s=s.replace('\\\"take_profit\\\":null,','\\\"take_profit\\\":%.8f,',1)
-          oldfmt='"KBPARI-" + id, order_ticket, JsonEscape(symbol), action, volume, fill_price, valid_stop_loss, JsonEscape(id));'
-          newfmt='"KBPARI-" + id, order_ticket, JsonEscape(symbol), action, volume, fill_price, valid_stop_loss, valid_take_profit, JsonEscape(id));'
-          if oldfmt not in s: raise SystemExit("order format marker missing")
-          s=s.replace(oldfmt,newfmt,1)
-          oldprint='volume, fill_price, valid_stop_loss, g_target_loss_pips, sl_adjusted ? " (adjusted for broker limits)" : "")'
-          newprint='volume, fill_price, valid_stop_loss, valid_take_profit, g_target_profit_pips, sl_adjusted ? " SL-adjusted" : "", tp_adjusted ? " TP-adjusted" : "")'
+          p = Path("mt5/botrading.mq5")
+          s = p.read_text()
+          if '#property version   "1.032"' not in s:
+              raise SystemExit(0)
+          s = s.replace('#property version   "1.032"', '#property version   "1.033"', 1)
+          s = s.replace('"1.032",','"1.033",',1)
+          s = s.replace('Print("[KBPARI] MT5 EA 1.032 initialized.");','Print("[KBPARI] MT5 EA 1.033 initialized.");',1)
+          marker = 'string ExtractFirstSignal(string json)\n{'
+          helper = 'double PrepareValidTakeProfit(string symbol, string action, double requested_tp, double bid, double ask, bool &adjusted)\n{\n   adjusted = false;\n   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);\n   double tick_size = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);\n   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);\n   long stops_level = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL);\n   long freeze_level = SymbolInfoInteger(symbol, SYMBOL_TRADE_FREEZE_LEVEL);\n   if(point <= 0.0) return requested_tp;\n   if(tick_size <= 0.0) tick_size = point;\n   double min_distance = (double)MathMax(stops_level, freeze_level) * point + tick_size;\n   double tp = requested_tp;\n   if(action == "BUY") { double min_tp = ask + min_distance; if(tp <= 0.0 || tp < min_tp) { tp = min_tp; adjusted = true; } }\n   else if(action == "SELL") { double max_tp = bid - min_distance; if(tp <= 0.0 || tp > max_tp) { tp = max_tp; adjusted = true; } }\n   tp = MathRound(tp / tick_size) * tick_size;\n   tp = NormalizeDouble(tp, digits);\n   if(adjusted) PrintFormat("[%s] TP adjusted: requested=%.5f final=%.5f stops_level=%d freeze_level=%d point=%.5f tick_size=%.5f", symbol, requested_tp, tp, (int)stops_level, (int)freeze_level, point, tick_size);\n   return tp;\n}\n\n'
+          s = s.replace(marker, helper + marker, 1)
+          old = '   bool sl_adjusted = false;\n   double valid_stop_loss = PrepareValidStopLoss(symbol, action, target_sl, tick.bid, tick.ask, sl_adjusted);\n\n   double volume = CalculateVolume(symbol, action, valid_stop_loss);'
+          new = '   bool sl_adjusted = false;\n   double valid_stop_loss = PrepareValidStopLoss(symbol, action, target_sl, tick.bid, tick.ask, sl_adjusted);\n\n   double target_tp = 0.0;\n   if(g_target_profit_pips > 0.0 && pip_size > 0.0)\n   {\n      if(action == "BUY") target_tp = execution_price + (g_target_profit_pips * pip_size);\n      else target_tp = execution_price - (g_target_profit_pips * pip_size);\n   }\n   bool tp_adjusted = false;\n   double valid_take_profit = PrepareValidTakeProfit(symbol, action, target_tp, tick.bid, tick.ask, tp_adjusted);\n\n   double volume = CalculateVolume(symbol, action, valid_stop_loss);'
+          if old not in s: raise SystemExit("setup marker missing")
+          s = s.replace(old, new, 1)
+          s = s.replace('trade.Buy(volume, symbol, 0.0, valid_stop_loss, 0.0, "KBPARI:" + id);','trade.Buy(volume, symbol, 0.0, valid_stop_loss, valid_take_profit, "KBPARI:" + id);',1)
+          s = s.replace('trade.Sell(volume, symbol, 0.0, valid_stop_loss, 0.0, "KBPARI:" + id);','trade.Sell(volume, symbol, 0.0, valid_stop_loss, valid_take_profit, "KBPARI:" + id);',1)
+          s = s.replace('\\\"take_profit\\\":null,','\\\"take_profit\\\":%.8f,',1)
+          oldfmt = '"KBPARI-" + id, order_ticket, JsonEscape(symbol), action, volume, fill_price, valid_stop_loss, JsonEscape(id));'
+          newfmt = '"KBPARI-" + id, order_ticket, JsonEscape(symbol), action, volume, fill_price, valid_stop_loss, valid_take_profit, JsonEscape(id));'
+          if oldfmt not in s: raise SystemExit("order marker missing")
+          s = s.replace(oldfmt, newfmt, 1)
+          oldprint = 'volume, fill_price, valid_stop_loss, g_target_loss_pips, sl_adjusted ? " (adjusted for broker limits)" : "")'
+          newprint = 'volume, fill_price, valid_stop_loss, valid_take_profit, g_target_profit_pips, sl_adjusted ? " SL-adjusted" : "", tp_adjusted ? " TP-adjusted" : "")'
           if oldprint not in s: raise SystemExit("print marker missing")
-          s=s.replace(oldprint,newprint,1)
+          s = s.replace(oldprint, newprint, 1)
           p.write_text(s)
           PY
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add mt5/botrading.mq5
-          git commit -m "Apply EA TP fix" || exit 0
-          git push origin main
+          git commit -m "Add broker-side TP to EA" || exit 0
+          git push
