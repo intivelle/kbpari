@@ -319,6 +319,162 @@ bool ClosePositionByTicket(ulong ticket, string reason)
    return true;
 }
 
+
+double NormalizeVolume(string symbol, double volume)
+{
+   double minv = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+   double maxv = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
+   double step = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+   if(step <= 0.0) step = minv;
+   volume = MathMax(minv, MathMin(maxv, volume));
+   volume = MathFloor(volume / step) * step;
+   int digits = 2;
+   if(step >= 1.0) digits = 0;
+   else if(step >= 0.1) digits = 1;
+   return NormalizeDouble(volume, digits);
+}
+
+double CalculateVolume(string symbol, double stop_loss)
+{
+   double minv = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double risk_money = balance * MathMax(0.01, g_risk_percent) / 100.0;
+
+   if(stop_loss <= 0.0)
+      return minv;
+
+   double price = SymbolInfoDouble(symbol, SYMBOL_BID);
+   double tick_size = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
+   double tick_value = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+   double distance = MathAbs(price - stop_loss);
+
+   if(tick_size <= 0.0 || tick_value <= 0.0 || distance <= 0.0)
+      return minv;
+
+   double loss_per_lot = (distance / tick_size) * tick_value;
+   if(loss_per_lot <= 0.0)
+      return minv;
+
+   return NormalizeVolume(symbol, risk_money / loss_per_lot);
+}
+
+string ExtractFirstSignal(string json)
+{
+   int a = StringFind(json, ""signals":[");
+   if(a < 0) return "";
+   a = StringFind(json, "{", a);
+   if(a < 0) return "";
+
+   int depth = 0;
+   bool in_string = false;
+   for(int i=a; i<StringLen(json); i++)
+   {
+      ushort ch = StringGetCharacter(json, i);
+      if(ch == '"' && (i == 0 || StringGetCharacter(json, i-1) != '\\'))
+         in_string = !in_string;
+      if(in_string) continue;
+
+      if(ch == '{') depth++;
+      else if(ch == '}')
+      {
+         depth--;
+         if(depth == 0)
+            return StringSubstr(json, a, i-a+1);
+      }
+   }
+   return "";
+}
+
+bool PollAndExecuteSignal()
+{
+   if(!g_bot_enabled || g_bot_mode != "AUTO" || !InpAllowTrading)
+      return false;
+
+   if(OpenPositionCount() >= g_max_positions)
+      return false;
+
+   string json;
+   int status;
+   if(!HttpRequest("GET", "/signals?limit=1", "", json, status) || status != 200)
+      return false;
+
+   string signal = ExtractFirstSignal(json);
+   if(StringLen(signal) == 0)
+      return false;
+
+   string id = JsonString(signal, "id", "");
+   string symbol = JsonString(signal, "symbol", "");
+   string action = JsonString(signal, "signal", "");
+   double stop_loss = JsonNumber(signal, "stop_loss", 0.0);
+
+   if(StringLen(id) == 0 || StringLen(symbol) == 0)
+      return false;
+
+   if(action != "BUY" && action != "SELL")
+      return false;
+
+   if(!IsManagedSymbol(symbol))
+      return false;
+
+   if(!SymbolSelect(symbol, true))
+      return false;
+
+   double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
+   if(ask <= 0.0 || bid <= 0.0)
+      return false;
+
+   double volume = CalculateVolume(symbol, stop_loss);
+   if(volume <= 0.0)
+      return false;
+
+   bool ok = false;
+   trade.SetTypeFillingBySymbol(symbol);
+
+   if(action == "BUY")
+      ok = trade.Buy(volume, symbol, 0.0, stop_loss, 0.0, "KBPARI:" + id);
+   else
+      ok = trade.Sell(volume, symbol, 0.0, stop_loss, 0.0, "KBPARI:" + id);
+
+   if(!ok)
+   {
+      PrintFormat("[%s] %s failed retcode=%d %s", symbol, action, trade.ResultRetcode(), trade.ResultRetcodeDescription());
+
+      string reject = StringFormat("{\"id\":\"%s\",\"status\":\"REJECTED\"}", JsonEscape(id));
+      string reject_response;
+      int reject_status;
+      HttpRequest("POST", "/signals/consume", reject, reject_response, reject_status);
+      return false;
+   }
+
+   ulong ticket = trade.ResultOrder();
+   double fill_price = trade.ResultPrice();
+
+   string order_body = StringFormat(
+      "{\"client_order_id\":\"%s\",\"mt5_ticket\":%I64u,\"symbol\":\"%s\",\"side\":\"%s\",\"volume\":%.2f,\"requested_price\":%.8f,\"stop_loss\":%.8f,\"take_profit\":null,\"status\":\"FILLED\",\"signal_id\":\"%s\"}",
+      "KBPARI-" + id, ticket, JsonEscape(symbol), action, volume, fill_price, stop_loss, JsonEscape(id));
+
+   string order_response;
+   int order_status;
+   HttpRequest("POST", "/orders", order_body, order_response, order_status);
+
+   string consume_body = StringFormat("{\"id\":\"%s\",\"status\":\"CONSUMED\"}", JsonEscape(id));
+   string consume_response;
+   int consume_status;
+   HttpRequest("POST", "/signals/consume", consume_body, consume_response, consume_status);
+
+   string exec_body = StringFormat(
+      "{\"action\":\"OPEN\",\"symbol\":\"%s\",\"mt5_ticket\":%I64u,\"side\":\"%s\",\"volume\":%.2f,\"price\":%.8f,\"reason\":\"SIGNAL:%s\",\"execution_status\":\"SUCCESS\"}",
+      JsonEscape(symbol), ticket, action, volume, fill_price, JsonEscape(id));
+
+   string exec_response;
+   int exec_status;
+   HttpRequest("POST", "/execution", exec_body, exec_response, exec_status);
+
+   PrintFormat("[%s] %s executed ticket=%I64u volume=%.2f", symbol, action, ticket, volume);
+   return true;
+}
+
 void ManagePositions()
 {
    if(g_target_profit_pips <= 0.0) return;
