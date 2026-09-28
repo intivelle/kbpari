@@ -9,7 +9,6 @@ permissions:
 
 jobs:
   patch-ea:
-    if: contains(github.event.head_commit.message, 'Apply EA TP Fix') == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
