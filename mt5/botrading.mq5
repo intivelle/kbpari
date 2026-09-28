@@ -811,7 +811,8 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.018 initialized.");\n   Print("[KBPARI] Signal engine market-data feed enabled.");
+   Print("[KBPARI] MT5 EA 1.018 initialized.");
+   Print("[KBPARI] Signal engine market-data feed enabled.");
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
 }
