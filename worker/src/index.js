@@ -1,4 +1,6 @@
 import { ingestCandlesAndGenerate } from "./signal-engine.js";
+const INVERSE_EXECUTION = true;
+
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
@@ -196,17 +198,31 @@ async function handleSignalsGet(request, env) {
   }
 
   const selected = candidate[0];
+  const originalSignal = selected.signal;
+  const executionSignal =
+    INVERSE_EXECUTION && originalSignal === "BUY" ? "SELL" :
+    INVERSE_EXECUTION && originalSignal === "SELL" ? "BUY" :
+    originalSignal;
+
+  // Preserve the original signal in Supabase. Only the signal delivered to
+  // MT5 is inverted, so historical signal analysis remains unchanged.
+  const delivered = {
+    ...selected,
+    signal: executionSignal,
+  };
 
   await writeSignalDiagnostic(
     env,
     "SIGNAL_DELIVERY_CANDIDATE",
-    "Candidate " + selected.signal + " is eligible for MT5 delivery",
+    "Candidate " + originalSignal + " will be delivered as " + executionSignal,
     selected.symbol,
     {
       signal_id: selected.id,
       signal_created_at: selected.created_at,
       signal_status: selected.status,
-      signal: selected.signal,
+      original_signal: originalSignal,
+      execution_signal: executionSignal,
+      inverse_execution: INVERSE_EXECUTION,
       requested_symbol: requestedSymbol,
       candidate_count: candidate.length,
       signal_reason: selected.reason,
@@ -224,7 +240,7 @@ async function handleSignalsGet(request, env) {
       level: "INFO",
       component: "WORKER",
       event: "SIGNAL_DELIVERED",
-      message: "Signal " + s.signal + " delivered to MT5",
+      message: "Signal " + originalSignal + " delivered to MT5 as " + executionSignal,
       symbol: s.symbol,
       mt5_ticket: null,
       metadata: {
@@ -233,12 +249,15 @@ async function handleSignalsGet(request, env) {
         signal_created_at: s.created_at,
         signal_reason: s.reason,
         signal_source: s.source,
+        original_signal: originalSignal,
+        execution_signal: executionSignal,
+        inverse_execution: INVERSE_EXECUTION,
         candidate_count: candidate.length,
       }
     })
   });
 
-  return response({ success: true, signals: [selected] }, 200, {
+  return response({ success: true, signals: [delivered] }, 200, {
     "x-kbpari-signal-id": String(selected.id),
   });
 }
