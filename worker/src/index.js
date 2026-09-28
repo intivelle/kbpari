@@ -170,23 +170,16 @@ async function handleSignalsGet(request, env) {
 
   const candidate = data || [];
 
-  // Safety gate: never stack multiple positions on the same symbol.
-  // Check the two gates in parallel to reduce WebRequest latency.
+  // MT5 is the source of truth for live positions. Do not block signal
+  // delivery using the Supabase positions snapshot, which can be stale.
+  // Only apply a short post-close cooldown to prevent immediate churn.
   const filtered = [];
   for (const signal of candidate) {
-    const symbol = encodeURIComponent(signal.symbol);
-    const [openPositions, recentClose] = await Promise.all([
-      supabaseRequest(
-        env,
-        `positions?select=mt5_ticket&symbol=eq.${symbol}&status=eq.OPEN&limit=1`
-      ),
-      supabaseRequest(
-        env,
-        `executions?select=executed_at&symbol=eq.${symbol}&action=eq.CLOSE&executed_at=gte.${encodeURIComponent(new Date(Date.now()-60000).toISOString())}&order=executed_at.desc&limit=1`
-      ),
-    ]);
+    const recentClose = await supabaseRequest(
+      env,
+      `executions?select=executed_at&symbol=eq.${encodeURIComponent(signal.symbol)}&action=eq.CLOSE&executed_at=gte.${encodeURIComponent(new Date(Date.now()-60000).toISOString())}&order=executed_at.desc&limit=1`
+    );
 
-    if (openPositions?.length) continue;
     if (recentClose?.length) continue;
 
     filtered.push(signal);
