@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.021"
+#property version   "1.022"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -288,7 +288,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.021",
+      "1.022",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -355,7 +355,17 @@ bool SendMarketData()
       if(generated)
          PrintFormat("[%s] Market data OK candles=%d signal=GENERATED", symbol, copied);
       else
-         PrintFormat("[%s] Market data OK candles=%d signal=NONE reason=%s", symbol, copied, signal_result);
+      {
+         string candle_time = JsonString(response_text, "candle_time", "");
+         double ema9 = JsonNumber(response_text, "ema9", 0.0);
+         double ema21 = JsonNumber(response_text, "ema21", 0.0);
+         double ema_gap = JsonNumber(response_text, "ema_gap", 0.0);
+         if(StringLen(candle_time) > 0 && ema9 > 0.0 && ema21 > 0.0)
+            PrintFormat("[%s] Market data OK candles=%d signal=NONE reason=%s candle=%s EMA9=%.5f EMA21=%.5f gap=%.5f",
+                        symbol, copied, signal_result, candle_time, ema9, ema21, ema_gap);
+         else
+            PrintFormat("[%s] Market data OK candles=%d signal=NONE reason=%s", symbol, copied, signal_result);
+      }
 
       return true;
    }
@@ -530,7 +540,11 @@ bool PollAndExecuteSignal()
    string json;
    int status;
    if(!HttpRequest("GET", "/signals?symbol=" + _Symbol + "&limit=1", "", json, status) || status != 200)
+   {
+      if(status > 0)
+         PrintFormat("[%s] Signal poll HTTP %d response=%s", _Symbol, status, json);
       return false;
+   }
 
    string signal = ExtractFirstSignal(json);
    if(StringLen(signal) == 0)
@@ -828,7 +842,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.021 initialized.");
+   Print("[KBPARI] MT5 EA 1.022 initialized.");
    PrintFormat("[KBPARI] Signal engine market-data feed enabled for chart symbol %s only.", _Symbol);
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
