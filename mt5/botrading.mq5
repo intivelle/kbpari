@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.012"
+#property version   "1.013"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -25,6 +25,7 @@ double   g_target_loss_pips = 0.0;
 double   g_risk_percent = 0.25;
 int      g_max_positions = 3;
 string   g_symbols[];
+ulong    g_bot_closed_tickets[];
 
 struct PositionSnapshot
 {
@@ -153,11 +154,43 @@ int OpenPositionCount()
    for(int i=0; i<PositionsTotal(); i++)
    {
       ulong ticket = PositionGetTicket(i);
-      if(ticket == 0) continue;
-      if(PositionSelectByTicket(ticket))
+      if(ticket == 0 || !PositionSelectByTicket(ticket)) continue;
+
+      string symbol = PositionGetString(POSITION_SYMBOL);
+      if(IsManagedSymbol(symbol))
          count++;
    }
    return count;
+}
+
+bool WasBotClosed(ulong ticket)
+{
+   for(int i=0; i<ArraySize(g_bot_closed_tickets); i++)
+      if(g_bot_closed_tickets[i] == ticket)
+         return true;
+   return false;
+}
+
+void RememberBotClosed(ulong ticket)
+{
+   if(ticket == 0 || WasBotClosed(ticket)) return;
+   int n = ArraySize(g_bot_closed_tickets);
+   ArrayResize(g_bot_closed_tickets, n + 1);
+   g_bot_closed_tickets[n] = ticket;
+}
+
+void ForgetBotClosed(ulong ticket)
+{
+   for(int i=0; i<ArraySize(g_bot_closed_tickets); i++)
+   {
+      if(g_bot_closed_tickets[i] == ticket)
+      {
+         for(int j=i; j<ArraySize(g_bot_closed_tickets)-1; j++)
+            g_bot_closed_tickets[j] = g_bot_closed_tickets[j+1];
+         ArrayResize(g_bot_closed_tickets, ArraySize(g_bot_closed_tickets)-1);
+         return;
+      }
+   }
 }
 
 bool IsManagedSymbol(string symbol)
@@ -244,7 +277,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.011",
+      "1.013",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -333,6 +366,7 @@ bool ClosePositionByTicket(ulong ticket, string reason)
       return false;
    }
 
+   RememberBotClosed(ticket);
    datetime closed_at = TimeCurrent();
    string body = StringFormat(
       "{\"action\":\"CLOSE\",\"symbol\":\"%s\",\"mt5_ticket\":%I64u,\"side\":\"%s\",\"volume\":%.2f,\"price\":%.8f,\"profit\":%.2f,\"pips\":%.2f,\"reason\":\"%s\",\"execution_status\":\"SUCCESS\"}",
@@ -598,6 +632,12 @@ void CheckForManualCloses()
 
       if(!still_open)
       {
+         if(WasBotClosed(old_ticket))
+         {
+            ForgetBotClosed(old_ticket);
+            continue;
+         }
+
          HistorySelect(TimeCurrent()-86400, TimeCurrent());
          if(HistorySelectByPosition(old_ticket))
          {
@@ -707,7 +747,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.012 initialized.");
+   Print("[KBPARI] MT5 EA 1.013 initialized.");
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
 }
