@@ -351,6 +351,14 @@ async function route(request, env) {
   if (request.method === "GET" && url.pathname === "/health") {
     return handleHealth(env);
   }
+  if (request.method === "GET" && url.pathname === "/") {
+    return response({
+      success: true,
+      service: "kbpari-worker",
+      version: env.WORKER_API_VERSION || "1.0.0",
+      message: "KBPARI Worker is running",
+    });
+  }
 
   const authError = await requireAuth(request, env);
   if (authError) return authError;
