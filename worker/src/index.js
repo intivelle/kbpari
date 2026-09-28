@@ -184,6 +184,27 @@ async function handleSignalsPost(request, env) {
   return response({ success: true, signal: data?.[0] ?? data });
 }
 
+
+async function handleSignalConsume(request, env) {
+  const body = await readJson(request);
+  if (!body.id) throw new Error("id is required");
+
+  const data = await supabaseRequest(
+    env,
+    `trading_signals?id=eq.${encodeURIComponent(body.id)}&status=eq.NEW`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        status: body.status ?? "CONSUMED",
+        consumed_at: new Date().toISOString(),
+      }),
+    }
+  );
+
+  return response({ success: true, signal: data?.[0] ?? data });
+}
+
 async function handleOrdersPost(request, env) {
   const body = await readJson(request);
   if (!body.client_order_id || !body.symbol || !body.side || body.volume == null) {
@@ -317,7 +338,7 @@ async function route(request, env) {
   if (request.method === "POST" && url.pathname === "/signals") {
     return handleSignalsPost(request, env);
   }
-  if (request.method === "POST" && url.pathname === "/orders") {
+  if (request.method === "POST" && url.pathname === "/signals/consume") {\n    return handleSignalConsume(request, env);\n  }\n  if (request.method === "POST" && url.pathname === "/orders") {
     return handleOrdersPost(request, env);
   }
   if (request.method === "GET" && url.pathname === "/positions") {
