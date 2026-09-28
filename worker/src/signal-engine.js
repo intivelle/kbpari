@@ -206,49 +206,15 @@ export async function ingestCandlesAndGenerate(env, body) {
 
   const sourceCandles = body.candles.slice(-120);
 
-  // MT5 sends broker/server epoch timestamps. Normalize them to UTC by
-  // choosing the whole-hour offset that puts the newest CLOSED M1 candle
-  // closest to the current UTC minute. This is more robust than inferring
-  // the offset from a single aheadMs threshold because broker DST/session
-  // offsets can change.
-  // Do not assume MT5 CopyRates array order. Different MQL5 array-series
-  // handling can place the newest bar at either end. Find the maximum
-  // timestamp explicitly so timezone normalization always uses the newest
-  // CLOSED candle.
-  let newestMs = NaN;
-  for (const candle of sourceCandles) {
-    const rawTime = Number(candle?.time);
-    const candidateMs = Number.isFinite(rawTime)
-      ? (rawTime < 100000000000 ? rawTime * 1000 : rawTime)
-      : new Date(candle?.time).getTime();
-    if (Number.isFinite(candidateMs) && (!Number.isFinite(newestMs) || candidateMs > newestMs)) {
-      newestMs = candidateMs;
-    }
-  }
-
-  let timestampOffsetMs = 0;
-  if (Number.isFinite(newestMs)) {
-    const nowMs = Date.now();
-    const hourMs = 60 * 60 * 1000;
-    const maxOffsetHours = 14;
-    let bestDistance = Number.POSITIVE_INFINITY;
-
-    for (let hours = 0; hours <= maxOffsetHours; hours++) {
-      const offsetMs = hours * hourMs;
-      const normalizedMs = newestMs - offsetMs;
-      const distance = Math.abs(normalizedMs - nowMs);
-
-      // Prefer a timestamp at or just before the current minute. A closed
-      // candle can be up to ~2 minutes behind the request time, but should
-      // never be materially in the future.
-      const isPlausible = normalizedMs <= nowMs + 90 * 1000 &&
-                          normalizedMs >= nowMs - 10 * 60 * 1000;
-      if (isPlausible && distance < bestDistance) {
-        bestDistance = distance;
-        timestampOffsetMs = offsetMs;
-      }
-    }
-  }
+  // MT5 candle timestamps arrive as Unix epoch seconds (or milliseconds).
+  // Unix epoch timestamps are absolute UTC instants; they must NOT be shifted by
+  // a guessed broker/server timezone. The previous implementation tried to
+  // subtract 0..14 hours to make the newest candle close to Date.now(), which
+  // could move valid candles several hours backward and cause the strategy to
+  // evaluate the wrong market state.
+  //
+  // Keep the timestamp exactly as supplied by MT5. We only normalize seconds
+  // to milliseconds for ISO formatting.
 
   const rows = sourceCandles.map(c => ({
     symbol,
@@ -259,7 +225,7 @@ export async function ingestCandlesAndGenerate(env, body) {
         ? (rawTime < 100000000000 ? rawTime * 1000 : rawTime)
         : new Date(c.time).getTime();
       if (!Number.isFinite(rawMs)) throw new Error("Invalid candle time");
-      return new Date(rawMs - timestampOffsetMs).toISOString();
+      return new Date(rawMs).toISOString();
     })(),
     open: Number(c.open),
     high: Number(c.high),
@@ -291,6 +257,10 @@ export async function ingestCandlesAndGenerate(env, body) {
     symbol,
     timeframe,
     candles_received: validRows.length,
+    newest_candle_time: validRows
+      .map(row => row.candle_time)
+      .sort()
+      .at(-1) || null,
     signal: generated
   };
 }
