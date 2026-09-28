@@ -633,24 +633,7 @@ void CheckForManualCloses()
                                   "MANUAL_OR_EXTERNAL_CLOSE", opened_at, close_time);
             }
 
-            string symbol = "";
-            if(deals > 0)
-            {
-               ulong deal0 = HistoryDealGetTicket(0);
-               if(deal0 > 0) symbol = HistoryDealGetString(deal0, DEAL_SYMBOL);
-            }
 
-            if(StringLen(symbol) > 0)
-            {
-               string body = StringFormat(
-                  "{\"action\":\"CLOSE\",\"symbol\":\"%s\",\"mt5_ticket\":%I64u,\"volume\":%.2f,\"price\":%.8f,\"profit\":%.2f,\"reason\":\"MANUAL_OR_EXTERNAL_CLOSE\",\"execution_status\":\"SUCCESS\",\"executed_at\":\"%s\"}",
-                  JsonEscape(symbol), old_ticket, volume, close_price, profit,
-                  TimeToString(close_time, TIME_DATE|TIME_SECONDS));
-
-               string response_text;
-               int status;
-               HttpRequest("POST", "/execution", body, response_text, status);
-            }
          }
       }
    }
