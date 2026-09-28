@@ -2,7 +2,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 const SUPABASE_URL = "https://hqhsuitvkcylfkrickrc.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_zlfCOovSyaSMMfPLKIsr1w_eAZx7IB_";
-const WORKER_URL = "";
+const WORKER_URL = "https://kbpari.pbahagia433.workers.dev";
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
 const $ = (id) => document.getElementById(id);
