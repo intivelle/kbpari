@@ -78,7 +78,17 @@ export async function generateSignal(env, symbol) {
     action = "SELL";
     reason = `EMA9_21_CROSSDOWN|${last.candle_time}`;
   } else {
-    return { generated: false, reason: "no_crossover", candle_time: last.candle_time };
+    return {
+      generated: false,
+      reason: "no_crossover",
+      candle_time: last.candle_time,
+      indicators: {
+        ema9: Number(ema9Now.toFixed(6)),
+        ema21: Number(ema21Now.toFixed(6)),
+        ema_gap: Number((ema9Now - ema21Now).toFixed(6)),
+        atr14: Number(atr14.toFixed(6))
+      }
+    };
   }
 
   const existing = await db(
