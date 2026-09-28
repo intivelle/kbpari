@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.027"
+#property version   "1.028"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -71,9 +71,35 @@ bool HttpRequest(string method, string path, string body, string &response_text,
 
    ResetLastError();
    status_code = WebRequest(method, url, headers, InpHttpTimeoutMs, data, result, result_headers);
+
+   // MT5 can return 1003 for an internal WebRequest/network failure even
+   // though 1003 is not an HTTP status code. Retry one time for this
+   // transient condition instead of treating it as a real server response.
+   if(status_code == 1003)
+   {
+      int first_error = GetLastError();
+      PrintFormat("[KBPARI] WebRequest internal 1003 path=%s error=%d; retrying once", path, first_error);
+      Sleep(250);
+      ArrayResize(result, 0);
+      result_headers = "";
+      ResetLastError();
+      status_code = WebRequest(method, url, headers, InpHttpTimeoutMs, data, result, result_headers);
+   }
+
    if(status_code < 0)
    {
-      PrintFormat("[KBPARI] WebRequest failed path=%s error=%d", path, GetLastError());
+      int error_code = GetLastError();
+      PrintFormat("[KBPARI] WebRequest failed path=%s error=%d", path, error_code);
+      return false;
+   }
+
+   if(status_code == 1003)
+   {
+      int error_code = GetLastError();
+      response_text = CharArrayToString(result, 0, -1, CP_UTF8);
+      PrintFormat("[KBPARI] WebRequest failed with internal 1003 after retry path=%s error=%d response=%s",
+                  path, error_code, response_text);
+      status_code = -1;
       return false;
    }
 
@@ -283,7 +309,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.027",
+      "1.028",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -971,7 +997,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.027 initialized.");
+   Print("[KBPARI] MT5 EA 1.028 initialized.");
    PrintFormat("[KBPARI] Signal engine market-data feed enabled for chart symbol %s only.", _Symbol);
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
