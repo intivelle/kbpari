@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.026"
+#property version   "1.027"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -283,7 +283,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.026",
+      "1.027",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -709,8 +709,23 @@ bool PollAndExecuteSignal()
    if(!SymbolInfoTick(symbol, tick) || tick.ask <= 0.0 || tick.bid <= 0.0)
       return false;
 
+   // Build the protective SL from the LIVE entry price and the dashboard
+   // Target Loss Pips. Do not trust a stale signal-engine SL because price
+   // may have moved between signal generation and MT5 execution.
+   double pip_size = PipSize(symbol);
+   double execution_price = (action == "BUY" ? tick.ask : tick.bid);
+   double target_sl = stop_loss;
+
+   if(g_target_loss_pips > 0.0 && pip_size > 0.0)
+   {
+      if(action == "BUY")
+         target_sl = execution_price - (g_target_loss_pips * pip_size);
+      else
+         target_sl = execution_price + (g_target_loss_pips * pip_size);
+   }
+
    bool sl_adjusted = false;
-   double valid_stop_loss = PrepareValidStopLoss(symbol, action, stop_loss, tick.bid, tick.ask, sl_adjusted);
+   double valid_stop_loss = PrepareValidStopLoss(symbol, action, target_sl, tick.bid, tick.ask, sl_adjusted);
 
    double volume = CalculateVolume(symbol, action, valid_stop_loss);
    if(volume <= 0.0)
@@ -766,7 +781,7 @@ bool PollAndExecuteSignal()
    int exec_status;
    HttpRequest("POST", "/execution", exec_body, exec_response, exec_status);
 
-   PrintFormat("[%s] %s executed order=%I64u position=%I64u volume=%.2f SL=%.5f%s", symbol, action, order_ticket, position_ticket, volume, valid_stop_loss, sl_adjusted ? " (adjusted for broker limits)" : "");
+   PrintFormat("[%s] %s executed order=%I64u position=%I64u volume=%.2f entry=%.5f SL=%.5f target_loss=%.2f pip%s", symbol, action, order_ticket, position_ticket, volume, fill_price, valid_stop_loss, g_target_loss_pips, sl_adjusted ? " (adjusted for broker limits)" : "");
    return true;
 }
 
@@ -956,7 +971,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.026 initialized.");
+   Print("[KBPARI] MT5 EA 1.027 initialized.");
    PrintFormat("[KBPARI] Signal engine market-data feed enabled for chart symbol %s only.", _Symbol);
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
