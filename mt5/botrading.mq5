@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.039"
+#property version   "1.040"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -669,7 +669,7 @@ void SendHeartbeat()
       StringFormat(
          "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
          JsonEscape(InpBotID),
-         "1.039",
+         "1.040",
          AccountInfoInteger(ACCOUNT_LOGIN),
          AccountInfoDouble(ACCOUNT_BALANCE),
          AccountInfoDouble(ACCOUNT_EQUITY),
@@ -1906,7 +1906,12 @@ bool PollAndExecuteSignal()
 
    if(StringLen(signal) == 0)
    {
-      // NONE tetap tidak ditampilkan.
+      // NONE tetap tidak ditampilkan, tetapi catat hasil polling agar
+      // masalah delivery dapat dibedakan dari signal-engine generation.
+      PrintFormat(
+         "[%s] Signal poll OK: no actionable NEW signal returned.",
+         _Symbol
+      );
       return false;
    }
 
@@ -2907,7 +2912,7 @@ void CheckForManualCloses()
 }
 
 // ============================================================
-// EA TIMER 1.039
+// EA TIMER 1.040
 //
 // URUTAN BARU:
 //
@@ -3036,7 +3041,7 @@ int OnInit()
    RefreshConfig();
 
    Print(
-      "[KBPARI] MT5 EA 1.039 initialized."
+      "[KBPARI] MT5 EA 1.040 initialized."
    );
 
    PrintFormat(
