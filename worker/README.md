@@ -16,7 +16,7 @@ Secrets are runtime configuration and must not be committed to GitHub.
 - `GET /config` — authenticated bot configuration
 - `POST /heartbeat` — MT5 heartbeat
 - `GET /signals` — authenticated pending signals
-- `POST /signals` — create a signal
+- `POST /signals`\n- `POST /signals/consume` — create a signal
 - `POST /orders` — submit an order record
 - `GET /positions` — read positions
 - `POST /positions` — synchronize a position
