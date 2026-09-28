@@ -200,16 +200,33 @@ export async function ingestCandlesAndGenerate(env, body) {
   if (timeframe !== "M1") throw new Error("Only M1 is supported");
   if (body.candles.length < 30) throw new Error("At least 30 candles are required");
 
-  const rows = body.candles.slice(-120).map(c => ({
+  const sourceCandles = body.candles.slice(-120);
+
+  // MT5 candle timestamps can use the broker/server timezone rather than UTC.
+  // If the newest candle is materially ahead of UTC, infer that fixed offset
+  // from the newest candle and normalize the entire batch to UTC.
+  const newestRaw = sourceCandles.length ? Number(sourceCandles[sourceCandles.length - 1].time) : NaN;
+  const newestMs = Number.isFinite(newestRaw)
+    ? (newestRaw < 100000000000 ? newestRaw * 1000 : newestRaw)
+    : new Date(sourceCandles[sourceCandles.length - 1]?.time).getTime();
+  let timestampOffsetMs = 0;
+  if (Number.isFinite(newestMs)) {
+    const aheadMs = newestMs - Date.now();
+    if (aheadMs > 60 * 60 * 1000 && aheadMs < 6 * 60 * 60 * 1000) {
+      timestampOffsetMs = aheadMs;
+    }
+  }
+
+  const rows = sourceCandles.map(c => ({
     symbol,
     timeframe,
     candle_time: (() => {
       const rawTime = Number(c.time);
-      const date = Number.isFinite(rawTime)
-        ? new Date(rawTime < 100000000000 ? rawTime * 1000 : rawTime)
-        : new Date(c.time);
-      if (Number.isNaN(date.getTime())) throw new Error("Invalid candle time");
-      return date.toISOString();
+      const rawMs = Number.isFinite(rawTime)
+        ? (rawTime < 100000000000 ? rawTime * 1000 : rawTime)
+        : new Date(c.time).getTime();
+      if (!Number.isFinite(rawMs)) throw new Error("Invalid candle time");
+      return new Date(rawMs - timestampOffsetMs).toISOString();
     })(),
     open: Number(c.open),
     high: Number(c.high),
