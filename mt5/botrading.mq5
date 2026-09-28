@@ -349,7 +349,7 @@ bool SendMarketData()
       }
       else if(status > 0)
       {
-         PrintFormat("[%s] Market data HTTP %d", symbol, status);
+         PrintFormat("[%s] Market data HTTP %d response=%s", symbol, status, response_text);
       }
    }
    return sent_any;
@@ -811,7 +811,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.018 initialized.");
+   Print("[KBPARI] MT5 EA 1.019 initialized.");
    Print("[KBPARI] Signal engine market-data feed enabled.");
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
