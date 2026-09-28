@@ -62,7 +62,8 @@ async function loadSystem(){
   $("equity").textContent=money(hb?.equity);
   $("eaVersion").textContent=hb?.ea_version||"—";
   $("systemEaVersion").textContent=hb?.ea_version||"—";
-  $("heartbeat").textContent=hb ? date(hb.created_at) : "—";\n  $("systemHeartbeat").textContent=hb ? date(hb.created_at) : "—";
+  $("heartbeat").textContent=hb ? date(hb.created_at) : "—";
+  $("systemHeartbeat").textContent=hb ? date(hb.created_at) : "—";
   if(WORKER_URL){
     try{
       const r=await fetch(WORKER_URL+"/health",{cache:"no-store"});
