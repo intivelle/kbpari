@@ -447,8 +447,7 @@ bool PollAndExecuteSignal()
       return false;
    }
 
-   ulong ticket = trade.ResultOrder();
-   double fill_price = trade.ResultPrice();
+   ulong order_ticket = trade.ResultOrder();\n   ulong deal_ticket = trade.ResultDeal();\n   ulong position_ticket = 0;\n   if(deal_ticket > 0)\n      position_ticket = (ulong)HistoryDealGetInteger(deal_ticket, DEAL_POSITION_ID);\n   if(position_ticket == 0 && PositionSelect(symbol))\n      position_ticket = (ulong)PositionGetInteger(POSITION_TICKET);\n   double fill_price = trade.ResultPrice();
 
    string order_body = StringFormat(
       "{\"client_order_id\":\"%s\",\"mt5_ticket\":%I64u,\"symbol\":\"%s\",\"side\":\"%s\",\"volume\":%.2f,\"requested_price\":%.8f,\"stop_loss\":%.8f,\"take_profit\":null,\"status\":\"FILLED\",\"signal_id\":\"%s\"}",
