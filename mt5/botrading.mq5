@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.011"
+#property version   "1.012"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -419,9 +419,6 @@ bool PollAndExecuteSignal()
    if(!g_bot_enabled || g_bot_mode != "AUTO" || !InpAllowTrading)
       return false;
 
-   if(OpenPositionCount() >= g_max_positions)
-      return false;
-
    string json;
    int status;
    if(!HttpRequest("GET", "/signals?limit=1", "", json, status) || status != 200)
@@ -463,6 +460,9 @@ bool PollAndExecuteSignal()
    }
 
    if(action != "BUY" && action != "SELL")
+      return false;
+
+   if(OpenPositionCount() >= g_max_positions)
       return false;
 
    if(!SymbolSelect(symbol, true))
@@ -707,7 +707,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.011 initialized.");
+   Print("[KBPARI] MT5 EA 1.012 initialized.");
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
 }
