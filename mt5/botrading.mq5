@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.020"
+#property version   "1.021"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -288,7 +288,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.020",
+      "1.021",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -350,8 +350,12 @@ bool SendMarketData()
    {
       last_sent = closed_bar_time;
 
-      if(StringFind(response_text, "\"generated\":true") >= 0)
-         PrintFormat("[%s] Signal engine generated a new signal.", symbol);
+      string signal_result = JsonString(response_text, "reason", "processed");
+      bool generated = (StringFind(response_text, "\"generated\":true") >= 0);
+      if(generated)
+         PrintFormat("[%s] Market data OK candles=%d signal=GENERATED", symbol, copied);
+      else
+         PrintFormat("[%s] Market data OK candles=%d signal=NONE reason=%s", symbol, copied, signal_result);
 
       return true;
    }
@@ -754,7 +758,7 @@ void CheckForManualCloses()
                }
             }
 
-            if(StringLen(symbol) > 0 && entry_price > 0.0 && close_price > 0.0)
+            if(StringLen(symbol) > 0 && entry_price > 0.0 && close_price > 0.0 && IsManagedSymbol(symbol))
             {
                pips = PositionPips(symbol, position_type, entry_price, close_price);
 
@@ -824,7 +828,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.020 initialized.");
+   Print("[KBPARI] MT5 EA 1.021 initialized.");
    PrintFormat("[KBPARI] Signal engine market-data feed enabled for chart symbol %s only.", _Symbol);
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
