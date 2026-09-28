@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>KBPARI BOT</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div id="auth" class="auth">
+    <div class="auth-card">
+      <div class="brand">KBPARI BOT</div>
+      <p>Trading dengan IA — untung atau rugi bagian dari nasib kita, hanya berikhtiar.</p>
+      <input id="email" type="email" placeholder="Email">
+      <input id="password" type="password" placeholder="Password">
+      <button id="loginBtn">Masuk</button>
+      <button id="signupBtn" class="secondary">Daftar</button>
+      <div id="authMsg" class="message"></div>
+    </div>
+  </div>
+
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <div class="brand">KBPARI BOT</div>
+      <nav>
+        <button data-tab="overview" class="nav active">Overview</button>
+        <button data-tab="positions" class="nav">Open Positions</button>
+        <button data-tab="transactions" class="nav">Today's Transactions</button>
+        <button data-tab="settings" class="nav">Bot Settings</button>
+        <button data-tab="performance" class="nav">Performance</button>
+        <button data-tab="system" class="nav">System</button>
+      </nav>
+      <button id="logoutBtn" class="logout">Keluar</button>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><h1 id="pageTitle">Overview</h1><span id="refreshStatus">Ready</span></div>
+        <button id="refreshBtn">Refresh</button>
+      </header>
+
+      <section id="overview" class="tab">
+        <div class="grid cards">
+          <div class="card"><span>Bot</span><strong id="botStatus">—</strong></div>
+          <div class="card"><span>MT5</span><strong id="mt5Status">—</strong></div>
+          <div class="card"><span>Balance</span><strong id="balance">—</strong></div>
+          <div class="card"><span>Equity</span><strong id="equity">—</strong></div>
+          <div class="card"><span>Floating P/L</span><strong id="floating">—</strong></div>
+          <div class="card"><span>Open Positions</span><strong id="openCount">0</strong></div>
+        </div>
+        <div class="panel">
+          <h2>Configuration aktif</h2>
+          <div class="grid details">
+            <div>Mode <b id="mode">—</b></div>
+            <div>Target Profit <b id="targetProfit">—</b></div>
+            <div>Target Loss (Auto) <b id="targetLoss">—</b></div>
+            <div>Risk <b id="risk">—</b></div>
+            <div>Max Positions <b id="maxPositions">—</b></div>
+            <div>EA Version <b id="eaVersion">—</b></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="positions" class="tab hidden">
+        <div class="panel"><div class="table-wrap"><table><thead><tr>
+          <th>Symbol</th><th>Side</th><th>Lot</th><th>Entry</th><th>Current</th><th>PIP</th><th>Profit</th><th>SL</th><th>TP</th><th>Ticket</th>
+        </tr></thead><tbody id="positionsBody"></tbody></table></div></div>
+      </section>
+
+      <section id="transactions" class="tab hidden">
+        <div class="panel"><div class="table-wrap"><table><thead><tr>
+          <th>Symbol</th><th>Side</th><th>Lot</th><th>Entry</th><th>Close</th><th>PIP</th><th>Profit</th><th>Reason</th><th>Closed</th><th>Ticket</th>
+        </tr></thead><tbody id="transactionsBody"></tbody></table></div></div>
+      </section>
+
+      <section id="settings" class="tab hidden">
+        <div class="panel settings">
+          <h2>Bot Settings</h2>
+          <label>Target Profit Pips<input id="targetProfitInput" type="number" min="0.01" step="0.01"></label>
+          <div class="readonly"><span>Target Loss Pips (Auto)</span><b id="targetLossReadonly">—</b><small>Dibuat otomatis bot = Target Profit × 2 (risk 2 : reward 1). Tidak dapat diedit.</small></div>
+          <label>Risk Percent<input id="riskInput" type="number" min="0" max="100" step="0.01"></label>
+          <label>Max Positions<input id="maxPositionsInput" type="number" min="1" step="1"></label>
+          <label>Mode<select id="modeInput"><option>AUTO</option><option>PAUSED</option><option>EMERGENCY_STOP</option></select></label>
+          <label class="switch"><input id="enabledInput" type="checkbox"><span>Bot Enabled</span></label>
+          <button id="saveSettings">Simpan Settings</button>
+          <div id="settingsMsg" class="message"></div>
+        </div>
+      </section>
+
+      <section id="performance" class="tab hidden">
+        <div class="grid cards">
+          <div class="card"><span>Total Trades</span><strong id="totalTrades">0</strong></div>
+          <div class="card"><span>Wins</span><strong id="wins">0</strong></div>
+          <div class="card"><span>Losses</span><strong id="losses">0</strong></div>
+          <div class="card"><span>Win Rate</span><strong id="winRate">0%</strong></div>
+          <div class="card"><span>Net P/L</span><strong id="netPnl">0</strong></div>
+          <div class="card"><span>Total PIP</span><strong id="netPips">0</strong></div>
+        </div>
+      </section>
+
+      <section id="system" class="tab hidden">
+        <div class="panel"><div class="grid details">
+          <div>Worker <b id="workerStatus">—</b></div>
+          <div>Supabase <b id="supabaseStatus">Connected</b></div>
+          <div>Heartbeat <b id="heartbeat">—</b></div>
+          <div>EA Version <b id="systemEaVersion">—</b></div>
+          <div>Last Execution <b id="lastExecution">—</b></div>
+          <div>Last Error <b id="lastError">—</b></div>
+        </div></div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
