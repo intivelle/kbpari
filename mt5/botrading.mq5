@@ -577,8 +577,13 @@ void CheckForManualCloses()
          {
             double profit = 0.0;
             double volume = 0.0;
+            double entry_price = 0.0;
             double close_price = 0.0;
+            double pips = 0.0;
+            datetime opened_at = 0;
             datetime close_time = 0;
+            ENUM_POSITION_TYPE position_type = POSITION_TYPE_BUY;
+            string symbol = "";
 
             int deals = HistoryDealsTotal();
             for(int d=0; d<deals; d++)
@@ -586,14 +591,46 @@ void CheckForManualCloses()
                ulong deal = HistoryDealGetTicket(d);
                if(deal == 0) continue;
                if((ulong)HistoryDealGetInteger(deal, DEAL_POSITION_ID) != old_ticket) continue;
+
+               string deal_symbol = HistoryDealGetString(deal, DEAL_SYMBOL);
+               if(StringLen(symbol) == 0) symbol = deal_symbol;
+
                long entry = HistoryDealGetInteger(deal, DEAL_ENTRY);
-               if(entry == DEAL_ENTRY_OUT || entry == DEAL_ENTRY_OUT_BY)
+               long deal_type = HistoryDealGetInteger(deal, DEAL_TYPE);
+               if(entry == DEAL_ENTRY_IN || entry == DEAL_ENTRY_INOUT)
                {
-                  profit += HistoryDealGetDouble(deal, DEAL_PROFIT);
+                  entry_price = HistoryDealGetDouble(deal, DEAL_PRICE);
                   volume += HistoryDealGetDouble(deal, DEAL_VOLUME);
+                  opened_at = (datetime)HistoryDealGetInteger(deal, DEAL_TIME);
+                  position_type = (deal_type == DEAL_TYPE_SELL ? POSITION_TYPE_SELL : POSITION_TYPE_BUY);
+               }
+               if(entry == DEAL_ENTRY_OUT || entry == DEAL_ENTRY_OUT_BY || entry == DEAL_ENTRY_INOUT)
+               {
                   close_price = HistoryDealGetDouble(deal, DEAL_PRICE);
+                  profit += HistoryDealGetDouble(deal, DEAL_PROFIT);
                   close_time = (datetime)HistoryDealGetInteger(deal, DEAL_TIME);
                }
+            }
+
+            if(StringLen(symbol) > 0 && entry_price > 0.0 && close_price > 0.0)
+            {
+               pips = PositionPips(symbol, position_type, entry_price, close_price);
+
+               string body = StringFormat(
+                  "{\"action\":\"CLOSE\",\"symbol\":\"%s\",\"mt5_ticket\":%I64u,\"side\":\"%s\",\"volume\":%.2f,\"price\":%.8f,\"profit\":%.2f,\"pips\":%.2f,\"reason\":\"MANUAL_OR_EXTERNAL_CLOSE\",\"execution_status\":\"SUCCESS\",\"executed_at\":\"%s\"}",
+                  JsonEscape(symbol), old_ticket, position_type==POSITION_TYPE_BUY ? "BUY" : "SELL",
+                  volume, close_price, profit, pips,
+                  TimeToString(close_time, TIME_DATE|TIME_SECONDS));
+
+               string response_text;
+               int status;
+               HttpRequest("POST", "/execution", body, response_text, status);
+               SendTransaction(old_ticket, symbol, position_type==POSITION_TYPE_BUY ? "BUY" : "SELL",
+                               volume, entry_price, close_price, pips, profit,
+                               "MANUAL_OR_EXTERNAL_CLOSE", opened_at, close_time);
+               MarkPositionClosed(old_ticket, symbol, position_type==POSITION_TYPE_BUY ? "BUY" : "SELL",
+                                  volume, entry_price, close_price, pips, profit,
+                                  "MANUAL_OR_EXTERNAL_CLOSE", opened_at, close_time);
             }
 
             string symbol = "";
