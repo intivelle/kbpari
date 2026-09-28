@@ -58,8 +58,6 @@ export async function generateSignal(env, symbol) {
   const closes = candles.map(c => Number(c.close));
   const last = candles[candles.length - 1];
   const previous = candles[candles.length - 2];
-  const prior2 = candles[candles.length - 3];
-  const prior3 = candles[candles.length - 4];
 
   const configRows = await db(
     env,
@@ -82,10 +80,8 @@ export async function generateSignal(env, symbol) {
   }
 
   // Trend-following entry model:
-  // Entry is driven by the current trend, not by a crossover or a
-  // pullback/reclaim event. BUY when EMA9 is above EMA21 and both
-  // averages are rising; SELL when EMA9 is below EMA21 and both
-  // averages are falling. ATR only filters genuinely flat conditions.
+  // Entry is driven by the current trend, with ONE completed candle
+  // confirming the direction. ATR filters genuinely flat conditions.
   const emaGapNow = ema9Now - ema21Now;
   const emaGapPrev = ema9Prev - ema21Prev;
   const ema9Slope = ema9Now - ema9Prev;
@@ -95,29 +91,23 @@ export async function generateSignal(env, symbol) {
   const atrThreshold = atr14 * 0.005;
   const trendStrength = Math.abs(emaGapNow) / atr14;
 
-  const threeUpCloses =
-    closeNow > closePrev &&
-    closePrev > Number(prior2.close) &&
-    Number(prior2.close) > Number(prior3.close);
-
-  const threeDownCloses =
-    closeNow < closePrev &&
-    closePrev < Number(prior2.close) &&
-    Number(prior2.close) < Number(prior3.close);
+  // One-candle confirmation replaces the previous 3-candle sequence.
+  const bullishCandle = closeNow > closePrev;
+  const bearishCandle = closeNow < closePrev;
 
   const bullishTrend =
     emaGapNow > 0 &&
     ema9Slope > atrThreshold &&
     ema21Slope >= 0 &&
     trendStrength >= 0.01 &&
-    threeUpCloses;
+    bullishCandle;
 
   const bearishTrend =
     emaGapNow < 0 &&
     ema9Slope < -atrThreshold &&
     ema21Slope <= 0 &&
     trendStrength >= 0.01 &&
-    threeDownCloses;
+    bearishCandle;
 
   let action = null;
   let reason = null;
@@ -183,7 +173,7 @@ export async function generateSignal(env, symbol) {
     stop_loss: Number(stopLoss.toFixed(precision)),
     target_price: null,
     reason,
-    source: "EMA9_EMA21_ATR14_3CLOSE_CONFIRMATION",
+    source: "EMA9_EMA21_ATR14_1CANDLE_CONFIRMATION",
     status: "NEW"
   };
 
