@@ -1,12 +1,12 @@
 #property strict
-#property version   "1.000"
+#property version   "1.010"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
 
 CTrade trade;
 
-input string InpWorkerURL = "https://YOUR-WORKER.workers.dev";
+input string InpWorkerURL = "https://kbpari.pbahagia433.workers.dev";
 input string InpBotAPIKey = "";
 input string InpBotID = "MT5-01";
 input int    InpTimerSeconds = 5;
@@ -513,7 +513,7 @@ bool PollAndExecuteSignal()
 
 void ManagePositions()
 {
-   if(g_target_profit_pips <= 0.0) return;
+   if(g_target_profit_pips <= 0.0 && g_target_loss_pips <= 0.0) return;
 
    for(int i=PositionsTotal()-1; i>=0; i--)
    {
@@ -528,9 +528,15 @@ void ManagePositions()
                                  PositionGetDouble(POSITION_PRICE_OPEN),
                                  PositionGetDouble(POSITION_PRICE_CURRENT));
 
-      if(pips >= g_target_profit_pips)
+      if(g_target_profit_pips > 0.0 && pips >= g_target_profit_pips)
       {
          ClosePositionByTicket(ticket, "TARGET_PROFIT_PIPS");
+         continue;
+      }
+
+      if(g_target_loss_pips > 0.0 && pips <= -g_target_loss_pips)
+      {
+         ClosePositionByTicket(ticket, "TARGET_LOSS_PIPS");
          continue;
       }
 
@@ -650,7 +656,10 @@ void OnTimer()
       RefreshConfig();
 
    if(g_bot_enabled && g_bot_mode == "AUTO" && InpAllowTrading)
+   {
       ManagePositions();
+      PollAndExecuteSignal();
+   }
    else
       SyncOpenPositions();
 
@@ -678,7 +687,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.000 initialized.");
+   Print("[KBPARI] MT5 EA 1.010 initialized.");
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
 }
