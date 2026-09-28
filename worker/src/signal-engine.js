@@ -69,7 +69,69 @@ export async function generateSignal(env, symbol) {
     return { generated: false, reason: "indicator_unavailable" };
   }
 
-  // Trend-following entry model:\n  // Establish trend direction from EMA9/EMA21 alignment and slope, then\n  // enter on a fresh pullback/reclaim instead of requiring a new crossover.\n  // BUY: EMA9 > EMA21, both rising, previous close <= EMA9, current close > EMA9.\n  // SELL: EMA9 < EMA21, both falling, previous close >= EMA9, current close < EMA9.\n  // ATR provides a minimum trend-strength filter for flat markets.\n  const emaGapNow = ema9Now - ema21Now;\n  const emaGapPrev = ema9Prev - ema21Prev;\n  const ema9Slope = ema9Now - ema9Prev;\n  const ema21Slope = ema21Now - ema21Prev;\n  const closeNow = Number(last.close);\n  const closePrev = Number(previous.close);\n  const atrThreshold = atr14 * 0.02;\n  const trendStrength = Math.abs(emaGapNow) / atr14;\n\n  const bullishTrend =\n    emaGapNow > 0 &&\n    ema9Slope > atrThreshold &&\n    ema21Slope > 0 &&\n    trendStrength >= 0.03;\n\n  const bearishTrend =\n    emaGapNow < 0 &&\n    ema9Slope < -atrThreshold &&\n    ema21Slope < 0 &&\n    trendStrength >= 0.03;\n\n  const bullishReclaim = closePrev <= ema9Prev && closeNow > ema9Now && closeNow > closePrev;\n  const bearishReclaim = closePrev >= ema9Prev && closeNow < ema9Now && closeNow < closePrev;\n\n  let action = null;\n  let reason = null;\n\n  if (bullishTrend && bullishReclaim) {\n    action = "BUY";\n    reason = "TREND_BUY_PULLBACK_RECLAIM|" + last.candle_time;\n  } else if (bearishTrend && bearishReclaim) {\n    action = "SELL";\n    reason = "TREND_SELL_PULLBACK_RECLAIM|" + last.candle_time;\n  } else {\n    const trendState = bullishTrend ? "BULLISH" : bearishTrend ? "BEARISH" : "NEUTRAL";\n    return {\n      generated: false,\n      reason: "no_entry_setup",\n      candle_time: last.candle_time,\n      indicators: {\n        ema9_prev: Number(ema9Prev.toFixed(6)),\n        ema21_prev: Number(ema21Prev.toFixed(6)),\n        ema_gap_prev: Number(emaGapPrev.toFixed(6)),\n        ema9: Number(ema9Now.toFixed(6)),\n        ema21: Number(ema21Now.toFixed(6)),\n        ema_gap: Number(emaGapNow.toFixed(6)),\n        ema9_slope: Number(ema9Slope.toFixed(6)),\n        ema21_slope: Number(ema21Slope.toFixed(6)),\n        atr14: Number(atr14.toFixed(6)),\n        trend_strength_atr: Number(trendStrength.toFixed(4)),\n        trend_state: trendState,\n        pullback_reclaim: false,\n        close: Number(closeNow.toFixed(6))\n      }\n    };\n  }\n
+  // Trend-following entry model:
+  // Establish trend direction from EMA9/EMA21 alignment and slope, then
+  // enter on a fresh pullback/reclaim instead of requiring a new crossover.
+  // BUY: EMA9 > EMA21, both rising, previous close <= EMA9, current close > EMA9.
+  // SELL: EMA9 < EMA21, both falling, previous close >= EMA9, current close < EMA9.
+  // ATR provides a minimum trend-strength filter for flat markets.
+  const emaGapNow = ema9Now - ema21Now;
+  const emaGapPrev = ema9Prev - ema21Prev;
+  const ema9Slope = ema9Now - ema9Prev;
+  const ema21Slope = ema21Now - ema21Prev;
+  const closeNow = Number(last.close);
+  const closePrev = Number(previous.close);
+  const atrThreshold = atr14 * 0.02;
+  const trendStrength = Math.abs(emaGapNow) / atr14;
+
+  const bullishTrend =
+    emaGapNow > 0 &&
+    ema9Slope > atrThreshold &&
+    ema21Slope > 0 &&
+    trendStrength >= 0.03;
+
+  const bearishTrend =
+    emaGapNow < 0 &&
+    ema9Slope < -atrThreshold &&
+    ema21Slope < 0 &&
+    trendStrength >= 0.03;
+
+  const bullishReclaim = closePrev <= ema9Prev && closeNow > ema9Now && closeNow > closePrev;
+  const bearishReclaim = closePrev >= ema9Prev && closeNow < ema9Now && closeNow < closePrev;
+
+  let action = null;
+  let reason = null;
+
+  if (bullishTrend && bullishReclaim) {
+    action = "BUY";
+    reason = "TREND_BUY_PULLBACK_RECLAIM|" + last.candle_time;
+  } else if (bearishTrend && bearishReclaim) {
+    action = "SELL";
+    reason = "TREND_SELL_PULLBACK_RECLAIM|" + last.candle_time;
+  } else {
+    const trendState = bullishTrend ? "BULLISH" : bearishTrend ? "BEARISH" : "NEUTRAL";
+    return {
+      generated: false,
+      reason: "no_entry_setup",
+      candle_time: last.candle_time,
+      indicators: {
+        ema9_prev: Number(ema9Prev.toFixed(6)),
+        ema21_prev: Number(ema21Prev.toFixed(6)),
+        ema_gap_prev: Number(emaGapPrev.toFixed(6)),
+        ema9: Number(ema9Now.toFixed(6)),
+        ema21: Number(ema21Now.toFixed(6)),
+        ema_gap: Number(emaGapNow.toFixed(6)),
+        ema9_slope: Number(ema9Slope.toFixed(6)),
+        ema21_slope: Number(ema21Slope.toFixed(6)),
+        atr14: Number(atr14.toFixed(6)),
+        trend_strength_atr: Number(trendStrength.toFixed(4)),
+        trend_state: trendState,
+        pullback_reclaim: false,
+        close: Number(closeNow.toFixed(6))
+      }
+    };
+  }
+
   const existing = await db(
     env,
     `trading_signals?select=id,status&symbol=eq.${encodeURIComponent(symbol)}&reason=eq.${encodeURIComponent(reason)}&limit=1`
