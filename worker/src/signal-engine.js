@@ -45,9 +45,13 @@ function decimals(symbol) {
 }
 
 export async function generateSignal(env, symbol) {
+  // Only evaluate candles that are current (or at most 90 seconds ahead).
+  // Older bad/future rows must not become the "last" candle and cause the
+  // same signal reason to be reported as duplicate on every new MT5 upload.
+  const signalNowIso = new Date(Date.now() + 90 * 1000).toISOString();
   const rows = await db(
     env,
-    `market_candles?select=candle_time,open,high,low,close,volume&symbol=eq.${encodeURIComponent(symbol)}&timeframe=eq.M1&order=candle_time.desc&limit=120`
+    `market_candles?select=candle_time,open,high,low,close,volume&symbol=eq.${encodeURIComponent(symbol)}&timeframe=eq.M1&candle_time=lte.${encodeURIComponent(signalNowIso)}&order=candle_time.desc&limit=120`
   );
 
   if (!rows || rows.length < 30) {
