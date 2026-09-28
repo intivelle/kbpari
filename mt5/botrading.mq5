@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.018"
+#property version   "1.019"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
