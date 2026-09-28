@@ -360,7 +360,7 @@ double CalculateVolume(string symbol, double stop_loss)
 
 string ExtractFirstSignal(string json)
 {
-   int a = StringFind(json, ""signals":[");
+   int a = StringFind(json, "\"signals\":[");
    if(a < 0) return "";
    a = StringFind(json, "{", a);
    if(a < 0) return "";
