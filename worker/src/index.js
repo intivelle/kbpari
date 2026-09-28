@@ -391,7 +391,8 @@ async function route(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/signals/consume") {
     return handleSignalConsume(request, env);
-  }\n  if (request.method === "POST" && url.pathname === "/orders") {
+  }
+  if (request.method === "POST" && url.pathname === "/orders") {
     return handleOrdersPost(request, env);
   }
   if (request.method === "GET" && url.pathname === "/positions") {
@@ -402,7 +403,8 @@ async function route(request, env) {
   }
   if (request.method === "POST" && url.pathname === "/transactions") {
     return handleTransactionsPost(request, env);
-  }\n  if (request.method === "POST" && url.pathname === "/execution") {
+  }
+  if (request.method === "POST" && url.pathname === "/execution") {
     return handleExecutionPost(request, env);
   }
 
