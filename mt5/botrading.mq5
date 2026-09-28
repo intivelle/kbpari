@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.016"
+#property version   "1.017"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -279,7 +279,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.016",
+      "1.017",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -292,6 +292,69 @@ void SendHeartbeat()
    string response_text;
    int status;
    HttpRequest("POST", "/heartbeat", body, response_text, status);
+}
+
+bool SendMarketData()
+{
+   string symbols[];
+   int count = ArraySize(g_symbols);
+   if(count > 0)
+   {
+      ArrayResize(symbols, count);
+      for(int i=0; i<count; i++) symbols[i] = g_symbols[i];
+   }
+   else
+   {
+      ArrayResize(symbols, 3);
+      symbols[0] = "XAUUSD";
+      symbols[1] = "EURUSD";
+      symbols[2] = "GBPUSD";
+      count = 3;
+   }
+
+   static datetime last_sent[];
+   if(ArraySize(last_sent) != count) ArrayResize(last_sent, count);
+
+   bool sent_any = false;
+   for(int s=0; s<count; s++)
+   {
+      string symbol = symbols[s];
+      if(!SymbolSelect(symbol, true)) continue;
+
+      datetime closed_bar_time = iTime(symbol, PERIOD_M1, 1);
+      if(closed_bar_time <= 0 || closed_bar_time == last_sent[s]) continue;
+
+      MqlRates rates[];
+      int copied = CopyRates(symbol, PERIOD_M1, 1, 80, rates);
+      if(copied < 30) continue;
+
+      string body = StringFormat("{\"symbol\":\"%s\",\"timeframe\":\"M1\",\"candles\":[", JsonEscape(symbol));
+      for(int i=0; i<copied; i++)
+      {
+         if(i > 0) body += ",";
+         body += StringFormat("{\"time\":%I64d,\"open\":%.10f,\"high\":%.10f,\"low\":%.10f,\"close\":%.10f,\"volume\":%I64d}",
+                              (long)rates[i].time, rates[i].open, rates[i].high, rates[i].low, rates[i].close, (long)rates[i].tick_volume);
+      }
+      body += "]}";
+
+      string response_text;
+      int status;
+      if(HttpRequest("POST", "/market-data", body, response_text, status) && status >= 200 && status < 300)
+      {
+         last_sent[s] = closed_bar_time;
+         sent_any = true;
+
+         string generated = JsonString(response_text, "generated", "false");
+         string action = JsonString(response_text, "signal", "");
+         if(generated == "true")
+            PrintFormat("[%s] Signal generated: %s", symbol, action);
+      }
+      else if(status > 0)
+      {
+         PrintFormat("[%s] Market data HTTP %d", symbol, status);
+      }
+   }
+   return sent_any;
 }
 
 bool SendPositionSnapshot(ulong ticket)
@@ -728,6 +791,7 @@ void OnTimer()
    if(g_last_sync == 0 || (now - g_last_sync) >= 10)
    {
       SendHeartbeat();
+      SendMarketData();
       CheckForManualCloses();
       g_last_sync = now;
    }
@@ -749,7 +813,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.016 initialized.");
+   Print("[KBPARI] MT5 EA 1.017 initialized.");\n   Print("[KBPARI] Signal engine market-data feed enabled.");
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
 }
