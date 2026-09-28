@@ -439,10 +439,30 @@ bool PollAndExecuteSignal()
    if(StringLen(id) == 0 || StringLen(symbol) == 0)
       return false;
 
-   if(action != "BUY" && action != "SELL")
+   if(!IsManagedSymbol(symbol))
       return false;
 
-   if(!IsManagedSymbol(symbol))
+   if(action == "CLOSE")
+   {
+      bool closed_any = false;
+      for(int i=PositionsTotal()-1; i>=0; i--)
+      {
+         ulong ticket = PositionGetTicket(i);
+         if(ticket == 0 || !PositionSelectByTicket(ticket)) continue;
+         if(PositionGetString(POSITION_SYMBOL) != symbol) continue;
+
+         if(ClosePositionByTicket(ticket, "SIGNAL_CLOSE"))
+            closed_any = true;
+      }
+
+      string consume_body = StringFormat("{\"id\":\"%s\",\"status\":\"CONSUMED\"}", JsonEscape(id));
+      string consume_response;
+      int consume_status;
+      HttpRequest("POST", "/signals/consume", consume_body, consume_response, consume_status);
+      return closed_any;
+   }
+
+   if(action != "BUY" && action != "SELL")
       return false;
 
    if(!SymbolSelect(symbol, true))
