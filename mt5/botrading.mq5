@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.023"
+#property version   "1.024"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -7,7 +7,7 @@
 CTrade trade;
 
 input string InpWorkerURL = "https://kbpari.pbahagia433.workers.dev";
-input string InpBotAPIKey = "";
+input string InpBotAPIKey = "kbpari_live_9f3c8a2e71d64b5aa9c7e14f3b82d6a1c5e8f0b27d49a61";
 input string InpBotID = "MT5-01";
 input int    InpTimerSeconds = 5;
 input int    InpConfigRefreshSeconds = 10;
@@ -197,14 +197,9 @@ void ForgetBotClosed(ulong ticket)
 
 bool IsManagedSymbol(string symbol)
 {
-   // Each EA instance is isolated to the symbol of its chart.
-   // The Worker/Supabase config may contain multiple enabled symbols,
-   // but this EA instance must never request/manage another symbol.
    if(symbol != _Symbol)
       return false;
 
-   // If the config contains an enabled-symbol list, the chart symbol
-   // must also be present in that list.
    if(ArraySize(g_symbols) == 0)
       return true;
 
@@ -288,7 +283,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.023",
+      "1.024",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -305,9 +300,6 @@ void SendHeartbeat()
 
 bool SendMarketData()
 {
-   // IMPORTANT: one EA instance processes ONLY the symbol of its chart.
-   // Example: an EA attached to XAUUSD sends only XAUUSD candles.
-   // It must never request EURUSD/GBPUSD market data from this chart.
    string symbol = _Symbol;
 
    if(!IsManagedSymbol(symbol))
@@ -469,7 +461,6 @@ bool ClosePositionByTicket(ulong ticket, string reason)
    PrintFormat("[%s] Position closed ticket=%I64u pips=%.2f reason=%s", symbol, ticket, pips, reason);
    return true;
 }
-
 
 double NormalizeVolume(string symbol, double volume)
 {
@@ -698,7 +689,6 @@ void SyncOpenPositions()
       if(ticket == 0 || !PositionSelectByTicket(ticket))
          continue;
 
-      // Never sync positions belonging to another chart symbol.
       if(!IsManagedSymbol(PositionGetString(POSITION_SYMBOL)))
          continue;
 
@@ -796,8 +786,6 @@ void CheckForManualCloses()
                                   volume, entry_price, close_price, pips, profit,
                                   "MANUAL_OR_EXTERNAL_CLOSE", opened_at, close_time);
             }
-
-
          }
       }
    }
@@ -846,7 +834,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.023 initialized.");
+   Print("[KBPARI] MT5 EA 1.024 initialized.");
    PrintFormat("[KBPARI] Signal engine market-data feed enabled for chart symbol %s only.", _Symbol);
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
