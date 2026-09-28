@@ -122,8 +122,8 @@ export async function generateSignal(env, symbol) {
 }
 
 export async function ingestCandlesAndGenerate(env, body) {
-  if (!body?.symbol || body?.timeframe || !Array.isArray(body?.candles)) {
-    if (!body?.symbol || !Array.isArray(body?.candles)) throw new Error("symbol and candles are required");
+  if (!body?.symbol || !Array.isArray(body?.candles)) {
+    throw new Error("symbol and candles are required");
   }
   const symbol = body.symbol;
   const timeframe = body.timeframe || "M1";
@@ -134,7 +134,14 @@ export async function ingestCandlesAndGenerate(env, body) {
   const rows = body.candles.slice(-120).map(c => ({
     symbol,
     timeframe,
-    candle_time: new Date(c.time).toISOString(),
+    candle_time: (() => {
+      const rawTime = Number(c.time);
+      const date = Number.isFinite(rawTime)
+        ? new Date(rawTime < 100000000000 ? rawTime * 1000 : rawTime)
+        : new Date(c.time);
+      if (Number.isNaN(date.getTime())) throw new Error("Invalid candle time");
+      return date.toISOString();
+    })(),
     open: Number(c.open),
     high: Number(c.high),
     low: Number(c.low),
