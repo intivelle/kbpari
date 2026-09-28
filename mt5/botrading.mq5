@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.043"
+#property version   "1.044"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -3195,7 +3195,7 @@ int OnInit()
    RefreshConfig();
 
    Print(
-      "[KBPARI] MT5 EA 1.043 initialized. Dynamic profit protection enabled; inverse execution remains Worker-controlled."
+      "[KBPARI] MT5 EA 1.044 initialized. Dynamic profit protection enabled; inverse execution remains Worker-controlled."
    );
 
    PrintFormat(
