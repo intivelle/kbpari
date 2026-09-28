@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.032"
+#property version   "1.033"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -309,7 +309,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.032",
+      "1.033",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -599,6 +599,26 @@ double PrepareValidStopLoss(string symbol, string action, double requested_sl, d
    return sl;
 }
 
+double PrepareValidTakeProfit(string symbol, string action, double requested_tp, double bid, double ask, bool &adjusted)
+{
+   adjusted = false;
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   double tick_size = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
+   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   long stops_level = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   long freeze_level = SymbolInfoInteger(symbol, SYMBOL_TRADE_FREEZE_LEVEL);
+   if(point <= 0.0) return requested_tp;
+   if(tick_size <= 0.0) tick_size = point;
+   double min_distance = (double)MathMax(stops_level, freeze_level) * point + tick_size;
+   double tp = requested_tp;
+   if(action == "BUY") { double min_tp = ask + min_distance; if(tp <= 0.0 || tp < min_tp) { tp = min_tp; adjusted = true; } }
+   else if(action == "SELL") { double max_tp = bid - min_distance; if(tp <= 0.0 || tp > max_tp) { tp = max_tp; adjusted = true; } }
+   tp = MathRound(tp / tick_size) * tick_size;
+   tp = NormalizeDouble(tp, digits);
+   if(adjusted) PrintFormat("[%s] TP adjusted: requested=%.5f final=%.5f stops_level=%d freeze_level=%d point=%.5f tick_size=%.5f", symbol, requested_tp, tp, (int)stops_level, (int)freeze_level, point, tick_size);
+   return tp;
+}
+
 string ExtractFirstSignal(string json)
 {
    int a = StringFind(json, "\"signals\":[");
@@ -706,6 +726,15 @@ bool PollAndExecuteSignal()
    bool sl_adjusted = false;
    double valid_stop_loss = PrepareValidStopLoss(symbol, action, target_sl, tick.bid, tick.ask, sl_adjusted);
 
+   double target_tp = 0.0;
+   if(g_target_profit_pips > 0.0 && pip_size > 0.0)
+   {
+      if(action == "BUY") target_tp = execution_price + (g_target_profit_pips * pip_size);
+      else target_tp = execution_price - (g_target_profit_pips * pip_size);
+   }
+   bool tp_adjusted = false;
+   double valid_take_profit = PrepareValidTakeProfit(symbol, action, target_tp, tick.bid, tick.ask, tp_adjusted);
+
    double volume = CalculateVolume(symbol, action, valid_stop_loss);
    if(volume <= 0.0)
       return false;
@@ -715,9 +744,9 @@ bool PollAndExecuteSignal()
    trade.SetTypeFillingBySymbol(symbol);
 
    if(action == "BUY")
-      ok = trade.Buy(volume, symbol, 0.0, valid_stop_loss, 0.0, "KBPARI:" + id);
+      ok = trade.Buy(volume, symbol, 0.0, valid_stop_loss, valid_take_profit, "KBPARI:" + id);
    else
-      ok = trade.Sell(volume, symbol, 0.0, valid_stop_loss, 0.0, "KBPARI:" + id);
+      ok = trade.Sell(volume, symbol, 0.0, valid_stop_loss, valid_take_profit, "KBPARI:" + id);
 
    if(!ok)
    {
@@ -740,8 +769,8 @@ bool PollAndExecuteSignal()
    double fill_price = trade.ResultPrice();
 
    string order_body = StringFormat(
-      "{\"client_order_id\":\"%s\",\"mt5_ticket\":%I64u,\"symbol\":\"%s\",\"side\":\"%s\",\"volume\":%.2f,\"requested_price\":%.8f,\"stop_loss\":%.8f,\"take_profit\":null,\"status\":\"FILLED\",\"signal_id\":\"%s\"}",
-      "KBPARI-" + id, order_ticket, JsonEscape(symbol), action, volume, fill_price, valid_stop_loss, JsonEscape(id));
+      "{\"client_order_id\":\"%s\",\"mt5_ticket\":%I64u,\"symbol\":\"%s\",\"side\":\"%s\",\"volume\":%.2f,\"requested_price\":%.8f,\"stop_loss\":%.8f,\"take_profit\":%.8f,\"status\":\"FILLED\",\"signal_id\":\"%s\"}",
+      "KBPARI-" + id, order_ticket, JsonEscape(symbol), action, volume, fill_price, valid_stop_loss, valid_take_profit, JsonEscape(id));
 
    string order_response;
    int order_status;
@@ -760,7 +789,7 @@ bool PollAndExecuteSignal()
    int exec_status;
    HttpRequest("POST", "/execution", exec_body, exec_response, exec_status);
 
-   PrintFormat("[%s] %s executed order=%I64u position=%I64u volume=%.2f entry=%.5f SL=%.5f target_loss=%.2f pip%s", symbol, action, order_ticket, position_ticket, volume, fill_price, valid_stop_loss, g_target_loss_pips, sl_adjusted ? " (adjusted for broker limits)" : "");
+   PrintFormat("[%s] %s executed order=%I64u position=%I64u volume=%.2f entry=%.5f SL=%.5f target_loss=%.2f pip%s", symbol, action, order_ticket, position_ticket, volume, fill_price, valid_stop_loss, valid_take_profit, g_target_profit_pips, sl_adjusted ? " SL-adjusted" : "", tp_adjusted ? " TP-adjusted" : "");
    return true;
 }
 
@@ -952,7 +981,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.032 initialized.");
+   Print("[KBPARI] MT5 EA 1.033 initialized.");
    PrintFormat("[KBPARI] Signal engine market-data feed enabled for chart symbol %s only.", _Symbol);
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
