@@ -3036,7 +3036,7 @@ int OnInit()
    RefreshConfig();
 
    Print(
-      "[KBPARI] MT5 EA 1.038 initialized."
+      "[KBPARI] MT5 EA 1.039 initialized."
    );
 
    PrintFormat(
