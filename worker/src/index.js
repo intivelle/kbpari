@@ -1,3 +1,4 @@
+import { ingestCandlesAndGenerate } from "./signal-engine.js";
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
@@ -385,6 +386,10 @@ async function route(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/signals") {
     return handleSignalsGet(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/market-data") {
+    const body = await readJson(request);
+    return response(await ingestCandlesAndGenerate(env, body));
   }
   if (request.method === "POST" && url.pathname === "/signals") {
     return handleSignalsPost(request, env);
