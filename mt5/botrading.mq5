@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.040"
+#property version   "1.041"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -1940,6 +1940,12 @@ bool PollAndExecuteSignal()
          ""
       );
 
+   string execution_action = action;
+   if(action == "BUY")
+      execution_action = "SELL";
+   else if(action == "SELL")
+      execution_action = "BUY";
+
    double stop_loss =
       JsonNumber(
          signal,
@@ -2176,7 +2182,7 @@ bool PollAndExecuteSignal()
 
    double execution_price =
       (
-         action == "BUY"
+         execution_action == "BUY"
          ? tick.ask
          : tick.bid
       );
@@ -2193,7 +2199,7 @@ bool PollAndExecuteSignal()
 
    if(g_target_loss_pips > 0.0)
    {
-      if(action == "BUY")
+      if(execution_action == "BUY")
       {
          target_sl =
             execution_price -
@@ -2218,7 +2224,7 @@ bool PollAndExecuteSignal()
    double valid_stop_loss =
       PrepareValidStopLoss(
          symbol,
-         action,
+         execution_action,
          target_sl,
          tick.bid,
          tick.ask,
@@ -2236,7 +2242,7 @@ bool PollAndExecuteSignal()
 
    if(g_target_profit_pips > 0.0)
    {
-      if(action == "BUY")
+      if(execution_action == "BUY")
       {
          target_tp =
             execution_price +
@@ -2261,7 +2267,7 @@ bool PollAndExecuteSignal()
    double valid_take_profit =
       PrepareValidTakeProfit(
          symbol,
-         action,
+         execution_action,
          target_tp,
          tick.bid,
          tick.ask,
@@ -2275,7 +2281,7 @@ bool PollAndExecuteSignal()
    double volume =
       CalculateVolume(
          symbol,
-         action,
+         execution_action,
          valid_stop_loss
       );
 
@@ -2295,9 +2301,10 @@ bool PollAndExecuteSignal()
    // =========================================================
 
    PrintFormat(
-      "[%s] Preparing %s volume=%.2f entry=%.5f SL=%.5f TP=%.5f target_profit=%.2f pip target_loss=%.2f pip",
+      "[%s] Preparing signal=%s execution=%s volume=%.2f entry=%.5f SL=%.5f TP=%.5f target_profit=%.2f pip target_loss=%.2f pip",
       symbol,
       action,
+      execution_action,
       volume,
       execution_price,
       valid_stop_loss,
@@ -2309,7 +2316,7 @@ bool PollAndExecuteSignal()
    // =========================================================
    // 18. EXISTING MT5 EXECUTION
    //
-   // trade.Buy / trade.Sell sengaja tidak diubah.
+   // Execute inverse side; original signal remains in the audit payload.
    // =========================================================
 
    bool ok = false;
@@ -2318,7 +2325,7 @@ bool PollAndExecuteSignal()
 
    trade.SetTypeFillingBySymbol(symbol);
 
-   if(action == "BUY")
+   if(execution_action == "BUY")
    {
       ok =
          trade.Buy(
@@ -2422,7 +2429,7 @@ bool PollAndExecuteSignal()
          "KBPARI-" + id,
          order_ticket,
          JsonEscape(symbol),
-         action,
+         execution_action,
          volume,
          fill_price,
          valid_stop_loss,
@@ -2471,7 +2478,7 @@ bool PollAndExecuteSignal()
          "{\"action\":\"OPEN\",\"symbol\":\"%s\",\"mt5_ticket\":%I64u,\"side\":\"%s\",\"volume\":%.2f,\"price\":%.8f,\"reason\":\"SIGNAL:%s\",\"execution_status\":\"SUCCESS\"}",
          JsonEscape(symbol),
          position_ticket,
-         action,
+         execution_action,
          volume,
          fill_price,
          JsonEscape(id)
@@ -3041,7 +3048,7 @@ int OnInit()
    RefreshConfig();
 
    Print(
-      "[KBPARI] MT5 EA 1.040 initialized."
+      "[KBPARI] MT5 EA 1.041 initialized. Inverse execution ON: BUY->SELL, SELL->BUY."
    );
 
    PrintFormat(
