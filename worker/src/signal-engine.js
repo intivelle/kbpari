@@ -149,15 +149,29 @@ export async function ingestCandlesAndGenerate(env, body) {
     volume: Number(c.volume || 0)
   }));
 
-  for (const row of rows) {
-    if (![row.open,row.high,row.low,row.close].every(Number.isFinite)) continue;
-    await db(env, "market_candles?on_conflict=symbol,timeframe,candle_time", {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-      body: JSON.stringify(row)
-    });
+  const validRows = rows.filter(row =>
+    [row.open, row.high, row.low, row.close].every(Number.isFinite)
+  );
+
+  if (validRows.length < 30) {
+    throw new Error("At least 30 valid candles are required");
   }
 
+  // IMPORTANT: Upsert all candles in one Supabase request.
+  // Sending one request per candle exceeds the Cloudflare Workers
+  // subrequest limit when a batch contains up to 120 candles.
+  await db(env, "market_candles?on_conflict=symbol,timeframe,candle_time", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(validRows)
+  });
+
   const generated = await generateSignal(env, symbol);
-  return { success: true, symbol, timeframe, candles_received: rows.length, signal: generated };
+  return {
+    success: true,
+    symbol,
+    timeframe,
+    candles_received: validRows.length,
+    signal: generated
+  };
 }
