@@ -202,23 +202,37 @@ export async function ingestCandlesAndGenerate(env, body) {
 
   const sourceCandles = body.candles.slice(-120);
 
-  // MT5 candle timestamps can use the broker/server timezone rather than UTC.
-  // If the newest candle is materially ahead of UTC, infer that fixed offset
-  // from the newest candle and normalize the entire batch to UTC.
+  // MT5 sends broker/server epoch timestamps. Normalize them to UTC by
+  // choosing the whole-hour offset that puts the newest CLOSED M1 candle
+  // closest to the current UTC minute. This is more robust than inferring
+  // the offset from a single aheadMs threshold because broker DST/session
+  // offsets can change.
   const newestRaw = sourceCandles.length ? Number(sourceCandles[sourceCandles.length - 1].time) : NaN;
   const newestMs = Number.isFinite(newestRaw)
     ? (newestRaw < 100000000000 ? newestRaw * 1000 : newestRaw)
     : new Date(sourceCandles[sourceCandles.length - 1]?.time).getTime();
+
   let timestampOffsetMs = 0;
   if (Number.isFinite(newestMs)) {
-    const aheadMs = newestMs - Date.now();
-    // Broker/server timestamps can be several hours ahead of UTC.
-    // Infer the fixed whole-hour offset from the newest candle. Use a
-    // 30-minute tolerance so UTC+1..UTC+5 style broker offsets are handled
-    // reliably, including when the request lands mid-minute.
+    const nowMs = Date.now();
     const hourMs = 60 * 60 * 1000;
-    if (aheadMs > 30 * 60 * 1000 && aheadMs < 6 * hourMs) {
-      timestampOffsetMs = Math.round(aheadMs / hourMs) * hourMs;
+    const maxOffsetHours = 14;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (let hours = 0; hours <= maxOffsetHours; hours++) {
+      const offsetMs = hours * hourMs;
+      const normalizedMs = newestMs - offsetMs;
+      const distance = Math.abs(normalizedMs - nowMs);
+
+      // Prefer a timestamp at or just before the current minute. A closed
+      // candle can be up to ~2 minutes behind the request time, but should
+      // never be materially in the future.
+      const isPlausible = normalizedMs <= nowMs + 90 * 1000 &&
+                          normalizedMs >= nowMs - 10 * 60 * 1000;
+      if (isPlausible && distance < bestDistance) {
+        bestDistance = distance;
+        timestampOffsetMs = offsetMs;
+      }
     }
   }
 
