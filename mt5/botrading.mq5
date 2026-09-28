@@ -7,7 +7,7 @@
 CTrade trade;
 
 input string InpWorkerURL = "https://kbpari.pbahagia433.workers.dev";
-input string InpBotAPIKey = "";
+input string InpBotAPIKey = "kbpari_live_9f3c8a2e71d64b5aa9c7e14f3b82d6a1c5e8f0b27d49a61";
 input string InpBotID = "MT5-01";
 input int    InpTimerSeconds = 5;
 input int    InpConfigRefreshSeconds = 10;
