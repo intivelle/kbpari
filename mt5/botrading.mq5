@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.013"
+#property version   "1.014"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -42,7 +42,7 @@ struct PositionSnapshot
 string JsonEscape(string value)
 {
    StringReplace(value, "\\", "\\\\");
-   StringReplace(value, """, "\\"");
+   StringReplace(value, "\"", "\\\"");
    StringReplace(value, "\r", "\\r");
    StringReplace(value, "\n", "\\n");
    return value;
@@ -81,7 +81,7 @@ bool HttpRequest(string method, string path, string body, string &response_text,
 
 string JsonString(string json, string key, string fallback="")
 {
-   string needle = """ + key + "":";
+   string needle = "\"" + key + "\":";
    int p = StringFind(json, needle);
    if(p < 0) return fallback;
    p += StringLen(needle);
@@ -100,7 +100,7 @@ string JsonString(string json, string key, string fallback="")
 
 double JsonNumber(string json, string key, double fallback=0.0)
 {
-   string needle = """ + key + "":";
+   string needle = "\"" + key + "\":";
    int p = StringFind(json, needle);
    if(p < 0) return fallback;
    p += StringLen(needle);
@@ -118,7 +118,7 @@ double JsonNumber(string json, string key, double fallback=0.0)
 
 bool JsonBool(string json, string key, bool fallback=false)
 {
-   string needle = """ + key + "":";
+   string needle = "\"" + key + "\":";
    int p = StringFind(json, needle);
    if(p < 0) return fallback;
    p += StringLen(needle);
@@ -207,9 +207,9 @@ bool IsManagedSymbol(string symbol)
 void ParseSymbols(string json)
 {
    ArrayResize(g_symbols, 0);
-   int p = StringFind(json, ""symbols":[");
+   int p = StringFind(json, "\"symbols\":[");
    if(p < 0) return;
-   p += StringLen(""symbols":[");
+   p += StringLen("\"symbols\":[");
    int end = StringFind(json, "]", p);
    if(end < 0) return;
 
@@ -217,9 +217,9 @@ void ParseSymbols(string json)
    int cursor = 0;
    while(cursor < StringLen(section))
    {
-      int q1 = StringFind(section, """, cursor);
+      int q1 = StringFind(section, "\"", cursor);
       if(q1 < 0) break;
-      int q2 = StringFind(section, """, q1+1);
+      int q2 = StringFind(section, "\"", q1+1);
       if(q2 < 0) break;
       string symbol = StringSubstr(section, q1+1, q2-q1-1);
       if(StringLen(symbol) > 0)
@@ -245,7 +245,7 @@ bool RefreshConfig()
       return false;
    }
 
-   int config_pos = StringFind(body, ""config":");
+   int config_pos = StringFind(body, "\"config\":");
    if(config_pos < 0)
    {
       Print("[KBPARI] Invalid config response");
@@ -277,7 +277,7 @@ void SendHeartbeat()
    string body = StringFormat(
       "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
       JsonEscape(InpBotID),
-      "1.013",
+      "1.014",
       AccountInfoInteger(ACCOUNT_LOGIN),
       AccountInfoDouble(ACCOUNT_BALANCE),
       AccountInfoDouble(ACCOUNT_EQUITY),
@@ -747,7 +747,7 @@ int OnInit()
    EventSetTimer(MathMax(1, InpTimerSeconds));
    RefreshConfig();
 
-   Print("[KBPARI] MT5 EA 1.013 initialized.");
+   Print("[KBPARI] MT5 EA 1.014 initialized.");
    Print("[KBPARI] Target Profit and Target Loss are dynamic Worker/Supabase values.");
    return INIT_SUCCEEDED;
 }
