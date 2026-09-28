@@ -207,10 +207,20 @@ export async function ingestCandlesAndGenerate(env, body) {
   // closest to the current UTC minute. This is more robust than inferring
   // the offset from a single aheadMs threshold because broker DST/session
   // offsets can change.
-  const newestRaw = sourceCandles.length ? Number(sourceCandles[sourceCandles.length - 1].time) : NaN;
-  const newestMs = Number.isFinite(newestRaw)
-    ? (newestRaw < 100000000000 ? newestRaw * 1000 : newestRaw)
-    : new Date(sourceCandles[sourceCandles.length - 1]?.time).getTime();
+  // Do not assume MT5 CopyRates array order. Different MQL5 array-series
+  // handling can place the newest bar at either end. Find the maximum
+  // timestamp explicitly so timezone normalization always uses the newest
+  // CLOSED candle.
+  let newestMs = NaN;
+  for (const candle of sourceCandles) {
+    const rawTime = Number(candle?.time);
+    const candidateMs = Number.isFinite(rawTime)
+      ? (rawTime < 100000000000 ? rawTime * 1000 : rawTime)
+      : new Date(candle?.time).getTime();
+    if (Number.isFinite(candidateMs) && (!Number.isFinite(newestMs) || candidateMs > newestMs)) {
+      newestMs = candidateMs;
+    }
+  }
 
   let timestampOffsetMs = 0;
   if (Number.isFinite(newestMs)) {
