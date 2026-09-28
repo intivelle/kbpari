@@ -143,39 +143,50 @@ async function handleHeartbeat(request, env) {
 }
 
 async function handleSignalsGet(request, env) {
-  const config = await getConfig(env);
+  const url = new URL(request.url);
+
+  // Keep config and signal lookup independent so a slow config request cannot
+  // unnecessarily delay signal delivery. The EA polls this endpoint frequently.
+  const [config, data] = await Promise.all([
+    getConfig(env),
+    (async () => {
+      const params = new URLSearchParams();
+      params.set("select", "*");
+      params.set("status", "eq.NEW");
+      params.set("signal", "neq.NONE");
+      params.set("order", "created_at.asc");
+      params.set("limit", url.searchParams.get("limit") || "20");
+
+      const symbol = url.searchParams.get("symbol");
+      if (symbol) params.set("symbol", `eq.${symbol}`);
+
+      return await supabaseRequest(env, `trading_signals?${params.toString()}`);
+    })(),
+  ]);
+
   if (!config || !config.enabled || config.mode !== "AUTO") {
     return response({ success: true, signals: [] });
   }
 
-  const url = new URL(request.url);
-  const params = new URLSearchParams();
-  params.set("select", "*");
-  params.set("status", "eq.NEW");
-  params.set("signal", "neq.NONE");
-  params.set("order", "created_at.asc");
-  params.set("limit", url.searchParams.get("limit") || "20");
-
-  const symbol = url.searchParams.get("symbol");
-  if (symbol) params.set("symbol", `eq.${symbol}`);
-
-  const data = await supabaseRequest(env, `trading_signals?${params.toString()}`);
   const candidate = data || [];
 
   // Safety gate: never stack multiple positions on the same symbol.
-  // Also enforce a short post-close cooldown to prevent rapid re-entry loops.
+  // Check the two gates in parallel to reduce WebRequest latency.
   const filtered = [];
   for (const signal of candidate) {
-    const openPositions = await supabaseRequest(
-      env,
-      `positions?select=mt5_ticket&symbol=eq.${encodeURIComponent(signal.symbol)}&status=eq.OPEN&limit=1`
-    );
-    if (openPositions?.length) continue;
+    const symbol = encodeURIComponent(signal.symbol);
+    const [openPositions, recentClose] = await Promise.all([
+      supabaseRequest(
+        env,
+        `positions?select=mt5_ticket&symbol=eq.${symbol}&status=eq.OPEN&limit=1`
+      ),
+      supabaseRequest(
+        env,
+        `executions?select=executed_at&symbol=eq.${symbol}&action=eq.CLOSE&executed_at=gte.${encodeURIComponent(new Date(Date.now()-60000).toISOString())}&order=executed_at.desc&limit=1`
+      ),
+    ]);
 
-    const recentClose = await supabaseRequest(
-      env,
-      `executions?select=executed_at&symbol=eq.${encodeURIComponent(signal.symbol)}&action=eq.CLOSE&executed_at=gte.${encodeURIComponent(new Date(Date.now()-60000).toISOString())}&order=executed_at.desc&limit=1`
-    );
+    if (openPositions?.length) continue;
     if (recentClose?.length) continue;
 
     filtered.push(signal);
@@ -207,7 +218,9 @@ async function handleSignalsGet(request, env) {
     });
   }
 
-  return response({ success: true, signals: filtered });
+  return response({ success: true, signals: filtered }, 200, filtered.length
+    ? { "x-kbpari-signal-id": String(filtered[0].id) }
+    : {});
 }
 
 async function handleSignalsPost(request, env) {
