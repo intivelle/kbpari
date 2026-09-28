@@ -284,16 +284,47 @@ bool SendPositionSnapshot(ulong ticket)
    return HttpRequest("POST", "/positions", body, response_text, status) && status >= 200 && status < 300;
 }
 
+bool SendTransaction(ulong ticket, string symbol, string side, double volume, double entry_price, double close_price, double pips, double profit, string reason, datetime opened_at, datetime closed_at)
+{
+   string body = StringFormat(
+      "{\"mt5_ticket\":%I64u,\"symbol\":\"%s\",\"side\":\"%s\",\"volume\":%.2f,\"entry_price\":%.8f,\"close_price\":%.8f,\"pips\":%.2f,\"profit\":%.2f,\"close_reason\":\"%s\",\"opened_at\":\"%s\",\"closed_at\":\"%s\"}",
+      ticket, JsonEscape(symbol), side, volume, entry_price, close_price, pips, profit,
+      JsonEscape(reason),
+      TimeToString(opened_at, TIME_DATE|TIME_SECONDS),
+      TimeToString(closed_at, TIME_DATE|TIME_SECONDS));
+
+   string response_text;
+   int status;
+   return HttpRequest("POST", "/transactions", body, response_text, status) && status >= 200 && status < 300;
+}
+
+bool MarkPositionClosed(ulong ticket, string symbol, string side, double volume, double entry_price, double close_price, double pips, double profit, string reason, datetime opened_at, datetime closed_at)
+{
+   string body = StringFormat(
+      "{\"mt5_ticket\":%I64u,\"symbol\":\"%s\",\"side\":\"%s\",\"volume\":%.2f,\"entry_price\":%.8f,\"current_price\":%.8f,\"pips\":%.2f,\"floating_profit\":%.2f,\"status\":\"CLOSED\",\"opened_at\":\"%s\",\"closed_at\":\"%s\",\"close_reason\":\"%s\"}",
+      ticket, JsonEscape(symbol), side, volume, entry_price, close_price, pips, profit,
+      TimeToString(opened_at, TIME_DATE|TIME_SECONDS),
+      TimeToString(closed_at, TIME_DATE|TIME_SECONDS),
+      JsonEscape(reason));
+
+   string response_text;
+   int status;
+   return HttpRequest("POST", "/positions", body, response_text, status) && status >= 200 && status < 300;
+}
+
 bool ClosePositionByTicket(ulong ticket, string reason)
 {
    if(!PositionSelectByTicket(ticket)) return false;
 
    string symbol = PositionGetString(POSITION_SYMBOL);
-   double pips = PositionPips(
-      symbol,
-      (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE),
-      PositionGetDouble(POSITION_PRICE_OPEN),
-      PositionGetDouble(POSITION_PRICE_CURRENT));
+   ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+   string side = (type == POSITION_TYPE_BUY ? "BUY" : "SELL");
+   double volume = PositionGetDouble(POSITION_VOLUME);
+   double entry_price = PositionGetDouble(POSITION_PRICE_OPEN);
+   double close_price = PositionGetDouble(POSITION_PRICE_CURRENT);
+   double profit = PositionGetDouble(POSITION_PROFIT);
+   datetime opened_at = (datetime)PositionGetInteger(POSITION_TIME);
+   double pips = PositionPips(symbol, type, entry_price, close_price);
 
    if(!trade.PositionClose(ticket))
    {
@@ -302,18 +333,16 @@ bool ClosePositionByTicket(ulong ticket, string reason)
       return false;
    }
 
+   datetime closed_at = TimeCurrent();
    string body = StringFormat(
       "{\"action\":\"CLOSE\",\"symbol\":\"%s\",\"mt5_ticket\":%I64u,\"side\":\"%s\",\"volume\":%.2f,\"price\":%.8f,\"profit\":%.2f,\"pips\":%.2f,\"reason\":\"%s\",\"execution_status\":\"SUCCESS\"}",
-      JsonEscape(symbol), ticket,
-      PositionGetInteger(POSITION_TYPE)==POSITION_TYPE_BUY ? "BUY" : "SELL",
-      PositionGetDouble(POSITION_VOLUME),
-      PositionGetDouble(POSITION_PRICE_CURRENT),
-      PositionGetDouble(POSITION_PROFIT),
-      pips, JsonEscape(reason));
+      JsonEscape(symbol), ticket, side, volume, close_price, profit, pips, JsonEscape(reason));
 
    string response_text;
    int status;
    HttpRequest("POST", "/execution", body, response_text, status);
+   SendTransaction(ticket, symbol, side, volume, entry_price, close_price, pips, profit, reason, opened_at, closed_at);
+   MarkPositionClosed(ticket, symbol, side, volume, entry_price, close_price, pips, profit, reason, opened_at, closed_at);
 
    PrintFormat("[%s] Position closed ticket=%I64u pips=%.2f reason=%s", symbol, ticket, pips, reason);
    return true;
