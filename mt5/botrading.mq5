@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.042"
+#property version   "1.043"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -669,7 +669,7 @@ void SendHeartbeat()
       StringFormat(
          "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
          JsonEscape(InpBotID),
-         "1.042",
+         "1.043",
          AccountInfoInteger(ACCOUNT_LOGIN),
          AccountInfoDouble(ACCOUNT_BALANCE),
          AccountInfoDouble(ACCOUNT_EQUITY),
@@ -2516,6 +2516,147 @@ bool PollAndExecuteSignal()
    return true;
 }
 
+bool ProtectPositionByPips(
+   ulong ticket,
+   double pips
+)
+{
+   if(!PositionSelectByTicket(ticket))
+      return false;
+
+   string symbol =
+      PositionGetString(
+         POSITION_SYMBOL
+      );
+
+   ENUM_POSITION_TYPE type =
+      (ENUM_POSITION_TYPE)
+      PositionGetInteger(
+         POSITION_TYPE
+      );
+
+   double open_price =
+      PositionGetDouble(
+         POSITION_PRICE_OPEN
+      );
+
+   double current_sl =
+      PositionGetDouble(
+         POSITION_SL
+      );
+
+   double current_tp =
+      PositionGetDouble(
+         POSITION_TP
+      );
+
+   double pip_size =
+      PipSize(symbol);
+
+   if(
+      pip_size <= 0.0 ||
+      open_price <= 0.0
+   )
+   {
+      return false;
+   }
+
+   double lock_pips = 0.0;
+
+   if(pips >= 40.0)
+      lock_pips = 25.0;
+   else if(pips >= 30.0)
+      lock_pips = 15.0;
+   else if(pips >= 20.0)
+      lock_pips = 5.0;
+   else
+      return false;
+
+   int digits =
+      (int)SymbolInfoInteger(
+         symbol,
+         SYMBOL_DIGITS
+      );
+
+   double requested_sl = 0.0;
+
+   if(type == POSITION_TYPE_BUY)
+   {
+      requested_sl =
+         open_price +
+         (lock_pips * pip_size);
+
+      requested_sl =
+         NormalizeDouble(
+            requested_sl,
+            digits
+         );
+
+      if(
+         current_sl > 0.0 &&
+         requested_sl <= current_sl
+      )
+      {
+         return false;
+      }
+   }
+   else if(type == POSITION_TYPE_SELL)
+   {
+      requested_sl =
+         open_price -
+         (lock_pips * pip_size);
+
+      requested_sl =
+         NormalizeDouble(
+            requested_sl,
+            digits
+         );
+
+      if(
+         current_sl > 0.0 &&
+         requested_sl >= current_sl
+      )
+      {
+         return false;
+      }
+   }
+   else
+   {
+      return false;
+   }
+
+   if(!trade.PositionModify(
+         ticket,
+         requested_sl,
+         current_tp
+      ))
+   {
+      PrintFormat(
+         "[%s] Dynamic protection failed ticket=%I64u pips=%.2f lock=%.2f requested_sl=%.5f retcode=%d %s",
+         symbol,
+         ticket,
+         pips,
+         lock_pips,
+         requested_sl,
+         trade.ResultRetcode(),
+         trade.ResultRetcodeDescription()
+      );
+
+      return false;
+   }
+
+   PrintFormat(
+      "[%s] Dynamic protection applied ticket=%I64u pips=%.2f SL locked=%.2f pip requested_sl=%.5f",
+      symbol,
+      ticket,
+      pips,
+      lock_pips,
+      requested_sl
+   );
+
+   return true;
+}
+
 void ManagePositions()
 {
    if(
@@ -2568,6 +2709,14 @@ void ManagePositions()
                POSITION_PRICE_CURRENT
             )
          );
+
+      if(pips >= 20.0)
+      {
+         ProtectPositionByPips(
+            ticket,
+            pips
+         );
+      }
 
       if(
          g_target_profit_pips > 0.0 &&
@@ -2917,7 +3066,7 @@ void CheckForManualCloses()
 }
 
 // ============================================================
-// EA TIMER 1.042
+// EA TIMER 1.043
 //
 // URUTAN BARU:
 //
@@ -3046,7 +3195,7 @@ int OnInit()
    RefreshConfig();
 
    Print(
-      "[KBPARI] MT5 EA 1.042 initialized. Inverse execution is Worker-controlled (EA does not double-invert)."
+      "[KBPARI] MT5 EA 1.043 initialized. Dynamic profit protection enabled; inverse execution remains Worker-controlled."
    );
 
    PrintFormat(
