@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.044"
+#property version   "1.045"
 #property description "KBPARI MT5 Expert Advisor - dynamic configuration from Worker/Supabase"
 
 #include <Trade/Trade.mqh>
@@ -358,6 +358,33 @@ double PositionPips(
    return (open_price - current_price) / pip;
 }
 
+bool HasOpenPositionSameSide(string symbol, string action)
+{
+   ENUM_POSITION_TYPE wanted_type =
+      (action == "BUY" ? POSITION_TYPE_BUY : POSITION_TYPE_SELL);
+
+   for(int i=0; i<PositionsTotal(); i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+
+      if(ticket == 0 || !PositionSelectByTicket(ticket))
+         continue;
+
+      string open_symbol = PositionGetString(POSITION_SYMBOL);
+
+      if(open_symbol != symbol)
+         continue;
+
+      ENUM_POSITION_TYPE open_type =
+         (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+
+      if(open_type == wanted_type)
+         return true;
+   }
+
+   return false;
+}
+
 int OpenPositionCount()
 {
    int count = 0;
@@ -669,7 +696,7 @@ void SendHeartbeat()
       StringFormat(
          "{\"bot_id\":\"%s\",\"ea_version\":\"%s\",\"mt5_account\":%I64d,\"balance\":%.2f,\"equity\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"terminal_time\":\"%s\",\"status\":\"ONLINE\",\"metadata\":{\"symbol\":\"%s\",\"chart_period\":%d}}",
          JsonEscape(InpBotID),
-         "1.043",
+         "1.045",
          AccountInfoInteger(ACCOUNT_LOGIN),
          AccountInfoDouble(ACCOUNT_BALANCE),
          AccountInfoDouble(ACCOUNT_EQUITY),
@@ -2090,7 +2117,46 @@ bool PollAndExecuteSignal()
    );
 
    // =========================================================
-   // 9. MAX POSITION
+   // 9. DUPLICATE SAME-SIDE ENTRY GUARD
+   //
+   // Jangan membuka BUY baru jika sudah ada BUY aktif pada symbol
+   // yang sama. Hal yang sama berlaku untuk SELL. Signal yang datang
+   // saat posisi searah masih aktif dianggap stale/duplicate dan
+   // langsung ditandai REJECTED agar tidak dieksekusi setelah posisi
+   // lama ditutup.
+   // =========================================================
+
+   if(HasOpenPositionSameSide(symbol, execution_action))
+   {
+      PrintFormat(
+         "[%s] Signal rejected: duplicate %s blocked because same-side position is already OPEN. id=%s",
+         symbol,
+         execution_action,
+         id
+      );
+
+      string duplicate_body =
+         StringFormat(
+            "{\"id\":\"%s\",\"status\":\"REJECTED\"}",
+            JsonEscape(id)
+         );
+
+      string duplicate_response;
+      int duplicate_status = 0;
+
+      HttpRequest(
+         "POST",
+         "/signals/consume",
+         duplicate_body,
+         duplicate_response,
+         duplicate_status
+      );
+
+      return false;
+   }
+
+   // =========================================================
+   // 10. MAX POSITION
    // =========================================================
 
    int current_positions =
@@ -2112,7 +2178,7 @@ bool PollAndExecuteSignal()
    }
 
    // =========================================================
-   // 10. SELECT SYMBOL
+   // 11. SELECT SYMBOL
    // =========================================================
 
    if(!SymbolSelect(symbol, true))
@@ -2126,7 +2192,7 @@ bool PollAndExecuteSignal()
    }
 
    // =========================================================
-   // 11. LIVE TICK
+   // 12. LIVE TICK
    // =========================================================
 
    MqlTick tick;
@@ -2157,7 +2223,7 @@ bool PollAndExecuteSignal()
    }
 
    // =========================================================
-   // 12. PIP SIZE
+   // 13. PIP SIZE
    // =========================================================
 
    double pip_size =
@@ -2175,7 +2241,7 @@ bool PollAndExecuteSignal()
    }
 
    // =========================================================
-   // 13. LIVE ENTRY PRICE
+   // 14. LIVE ENTRY PRICE
    // =========================================================
 
    double execution_price =
@@ -2186,7 +2252,7 @@ bool PollAndExecuteSignal()
       );
 
    // =========================================================
-   // 14. TARGET LOSS
+   // 15. TARGET LOSS
    //
    // Dashboard:
    // Target Loss = 100 pip
@@ -2230,7 +2296,7 @@ bool PollAndExecuteSignal()
       );
 
    // =========================================================
-   // 15. TARGET PROFIT
+   // 16. TARGET PROFIT
    //
    // Dashboard:
    // Target Profit = 50 pip
@@ -2273,7 +2339,7 @@ bool PollAndExecuteSignal()
       );
 
    // =========================================================
-   // 16. CALCULATE LOT
+   // 17. CALCULATE LOT
    // =========================================================
 
    double volume =
@@ -2295,7 +2361,7 @@ bool PollAndExecuteSignal()
    }
 
    // =========================================================
-   // 17. DIAGNOSTIC SEBELUM ORDER
+   // 18. DIAGNOSTIC SEBELUM ORDER
    // =========================================================
 
    PrintFormat(
@@ -2312,7 +2378,7 @@ bool PollAndExecuteSignal()
    );
 
    // =========================================================
-   // 18. EXISTING MT5 EXECUTION
+   // 19. EXISTING MT5 EXECUTION
    //
    // Execute the side delivered by Worker; original signal remains in the audit payload.
    // =========================================================
@@ -2349,7 +2415,7 @@ bool PollAndExecuteSignal()
    }
 
    // =========================================================
-   // 19. ORDER REJECTED
+   // 20. ORDER REJECTED
    // =========================================================
 
    if(!ok)
@@ -2383,7 +2449,7 @@ bool PollAndExecuteSignal()
    }
 
    // =========================================================
-   // 20. ORDER SUCCESS
+   // 21. ORDER SUCCESS
    // =========================================================
 
    ulong order_ticket =
@@ -2418,7 +2484,7 @@ bool PollAndExecuteSignal()
       trade.ResultPrice();
 
    // =========================================================
-   // 21. POST ORDER
+   // 22. POST ORDER
    // =========================================================
 
    string order_body =
@@ -2447,7 +2513,7 @@ bool PollAndExecuteSignal()
    );
 
    // =========================================================
-   // 22. CONSUME SIGNAL
+   // 23. CONSUME SIGNAL
    // =========================================================
 
    string consume_body =
@@ -2468,7 +2534,7 @@ bool PollAndExecuteSignal()
    );
 
    // =========================================================
-   // 23. EXECUTION AUDIT
+   // 24. EXECUTION AUDIT
    // =========================================================
 
    string exec_body =
@@ -2494,7 +2560,7 @@ bool PollAndExecuteSignal()
    );
 
    // =========================================================
-   // 24. FINAL SUCCESS LOG
+   // 25. FINAL SUCCESS LOG
    // =========================================================
 
    PrintFormat(
@@ -3195,7 +3261,7 @@ int OnInit()
    RefreshConfig();
 
    Print(
-      "[KBPARI] MT5 EA 1.044 initialized. Dynamic profit protection enabled; inverse execution remains Worker-controlled."
+      "[KBPARI] MT5 EA 1.045 initialized. Dynamic profit protection enabled; inverse execution remains Worker-controlled."
    );
 
    PrintFormat(
